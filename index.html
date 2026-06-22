@@ -1,0 +1,877 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>福農監控平台 | 企業衛星農場</title>
+  <meta name="description" content="企業認養農場專屬頁：植物攝像頭、WeGrow Orbit 澆水施肥履歷、企業衛星農場照護證明。">
+  <style>
+    :root {
+      color-scheme: light;
+      --ink: #17211c;
+      --muted: #657169;
+      --line: #dfe8df;
+      --field: #f7f7f2;
+      --leaf: #256c46;
+      --leaf-deep: #123f2a;
+      --sun: #f0b84b;
+      --sky: #d9ecf0;
+      --white: #ffffff;
+      --radius: 8px;
+      --shadow: 0 18px 48px rgba(23, 33, 28, .12);
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      font-family: "Noto Sans TC", "Microsoft JhengHei", Arial, sans-serif;
+      color: var(--ink);
+      background: var(--field);
+      letter-spacing: 0;
+    }
+
+    a {
+      color: inherit;
+      text-decoration: none;
+    }
+
+    .shell {
+      min-height: 100vh;
+      display: grid;
+      grid-template-rows: auto 1fr;
+    }
+
+    header {
+      position: sticky;
+      top: 0;
+      z-index: 10;
+      background: rgba(246, 248, 241, .92);
+      backdrop-filter: blur(16px);
+      border-bottom: 1px solid rgba(37, 108, 70, .14);
+    }
+
+    .nav {
+      width: min(1180px, calc(100% - 32px));
+      margin: 0 auto;
+      min-height: 68px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 20px;
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      min-width: 0;
+    }
+
+    .mark {
+      width: 38px;
+      height: 38px;
+      border-radius: 50%;
+      display: grid;
+      place-items: center;
+      background: var(--leaf);
+      color: var(--white);
+      font-weight: 800;
+      flex: 0 0 auto;
+    }
+
+    .brand strong {
+      display: block;
+      font-size: 17px;
+      line-height: 1.2;
+    }
+
+    .brand span {
+      display: block;
+      margin-top: 2px;
+      font-size: 12px;
+      color: var(--muted);
+      white-space: nowrap;
+    }
+
+    .nav-actions {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .status-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      min-height: 36px;
+      padding: 0 12px;
+      border: 1px solid rgba(37, 108, 70, .2);
+      border-radius: 999px;
+      background: rgba(255, 255, 255, .72);
+      color: var(--leaf-deep);
+      font-size: 13px;
+      white-space: nowrap;
+    }
+
+    .dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: #2fb265;
+      box-shadow: 0 0 0 5px rgba(47, 178, 101, .15);
+    }
+
+    main {
+      width: min(1180px, calc(100% - 32px));
+      margin: 0 auto;
+      padding: 26px 0 42px;
+    }
+
+    .hero {
+      display: grid;
+      grid-template-columns: minmax(0, 1.42fr) minmax(320px, .88fr);
+      gap: 18px;
+      align-items: stretch;
+    }
+
+    .camera {
+      min-height: 620px;
+      border-radius: var(--radius);
+      overflow: hidden;
+      position: relative;
+      background: #111;
+      box-shadow: var(--shadow);
+    }
+
+    .camera img {
+      width: 100%;
+      height: 100%;
+      min-height: 620px;
+      object-fit: cover;
+      display: block;
+      filter: saturate(1.04) contrast(1.02);
+    }
+
+    .camera::after {
+      content: "";
+      position: absolute;
+      inset: 0;
+      background: linear-gradient(180deg, rgba(0, 0, 0, .18), rgba(0, 0, 0, .05) 42%, rgba(0, 0, 0, .55));
+      pointer-events: none;
+    }
+
+    .camera-top,
+    .camera-bottom {
+      position: absolute;
+      z-index: 2;
+      left: 22px;
+      right: 22px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      color: var(--white);
+    }
+
+    .camera-top {
+      top: 20px;
+    }
+
+    .camera-bottom {
+      bottom: 22px;
+      align-items: end;
+    }
+
+    .live-tag,
+    .weather-tag {
+      display: inline-flex;
+      align-items: center;
+      min-height: 34px;
+      padding: 0 12px;
+      border-radius: 999px;
+      background: rgba(15, 29, 22, .62);
+      border: 1px solid rgba(255, 255, 255, .22);
+      font-size: 13px;
+      white-space: nowrap;
+    }
+
+    .live-tag {
+      gap: 8px;
+    }
+
+    .live-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: #ff5f55;
+      box-shadow: 0 0 0 5px rgba(255, 95, 85, .2);
+    }
+
+    .camera-title {
+      max-width: 620px;
+    }
+
+    .camera-title p {
+      margin: 0 0 10px;
+      font-size: 15px;
+      color: rgba(255, 255, 255, .82);
+    }
+
+    h1 {
+      margin: 0;
+      font-size: clamp(36px, 6vw, 76px);
+      line-height: .95;
+      font-weight: 850;
+      letter-spacing: 0;
+    }
+
+    .quick-proof {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 8px;
+      width: min(390px, 100%);
+    }
+
+    .proof-item {
+      min-height: 76px;
+      padding: 12px;
+      border-radius: var(--radius);
+      background: rgba(255, 255, 255, .9);
+      color: var(--ink);
+    }
+
+    .proof-item strong {
+      display: block;
+      font-size: 20px;
+      line-height: 1;
+    }
+
+    .proof-item span {
+      display: block;
+      margin-top: 8px;
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.35;
+    }
+
+    .side {
+      display: grid;
+      gap: 12px;
+      align-content: stretch;
+    }
+
+    .photo-pair {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+    }
+
+    .photo-card {
+      min-height: 160px;
+      border-radius: var(--radius);
+      overflow: hidden;
+      position: relative;
+      background: #d8dfd4;
+      border: 1px solid var(--line);
+    }
+
+    .photo-card img {
+      width: 100%;
+      height: 100%;
+      min-height: 160px;
+      object-fit: cover;
+      display: block;
+    }
+
+    .photo-card span {
+      position: absolute;
+      left: 10px;
+      bottom: 10px;
+      display: inline-flex;
+      align-items: center;
+      min-height: 28px;
+      padding: 0 10px;
+      border-radius: 999px;
+      background: rgba(16, 33, 23, .68);
+      color: var(--white);
+      font-size: 12px;
+    }
+
+    .panel {
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      background: var(--white);
+      padding: 18px;
+      box-shadow: 0 12px 28px rgba(23, 33, 28, .07);
+    }
+
+    .panel h2,
+    .panel h3 {
+      margin: 0;
+      font-size: 18px;
+      line-height: 1.25;
+    }
+
+    .panel-sub {
+      margin: 8px 0 0;
+      color: var(--muted);
+      font-size: 14px;
+      line-height: 1.55;
+    }
+
+    .adoption-card {
+      background: var(--leaf-deep);
+      color: var(--white);
+      border-color: transparent;
+    }
+
+    .adoption-card .panel-sub {
+      color: rgba(255, 255, 255, .78);
+    }
+
+    .adoption-meta {
+      margin-top: 18px;
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+    }
+
+    .meta-box {
+      padding: 12px;
+      border-radius: var(--radius);
+      background: rgba(255, 255, 255, .1);
+      border: 1px solid rgba(255, 255, 255, .14);
+    }
+
+    .meta-box span {
+      display: block;
+      color: rgba(255, 255, 255, .72);
+      font-size: 12px;
+      margin-bottom: 6px;
+    }
+
+    .meta-box strong {
+      font-size: 17px;
+      line-height: 1.25;
+    }
+
+    .orbit-list {
+      margin: 18px 0 0;
+      display: grid;
+      gap: 12px;
+    }
+
+    .orbit-row {
+      display: grid;
+      grid-template-columns: 40px 1fr auto;
+      gap: 12px;
+      align-items: center;
+      min-height: 56px;
+      padding: 10px;
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      background: #fbfcf8;
+    }
+
+    .orbit-icon {
+      width: 40px;
+      height: 40px;
+      border-radius: 50%;
+      display: grid;
+      place-items: center;
+      background: var(--sky);
+      color: var(--leaf-deep);
+      font-weight: 800;
+      font-size: 14px;
+    }
+
+    .orbit-row strong {
+      display: block;
+      font-size: 15px;
+      line-height: 1.25;
+    }
+
+    .orbit-row span {
+      display: block;
+      margin-top: 4px;
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.35;
+    }
+
+    .orbit-time {
+      color: var(--leaf);
+      font-size: 12px;
+      white-space: nowrap;
+    }
+
+    .neighbor-note {
+      display: grid;
+      grid-template-columns: 52px 1fr;
+      gap: 12px;
+      align-items: center;
+      background: #fff8e8;
+      border-color: rgba(240, 184, 75, .38);
+    }
+
+    .avatar {
+      width: 52px;
+      height: 52px;
+      border-radius: 50%;
+      display: grid;
+      place-items: center;
+      background: var(--sun);
+      color: #3f2b08;
+      font-weight: 850;
+    }
+
+    .timeline {
+      margin-top: 18px;
+      display: grid;
+      gap: 0;
+      border-top: 1px solid var(--line);
+    }
+
+    .time-row {
+      display: grid;
+      grid-template-columns: 90px 1fr;
+      gap: 14px;
+      padding: 14px 0;
+      border-bottom: 1px solid var(--line);
+    }
+
+    .time-row time {
+      color: var(--leaf);
+      font-weight: 700;
+      font-size: 13px;
+    }
+
+    .time-row strong {
+      display: block;
+      font-size: 14px;
+    }
+
+    .time-row span {
+      display: block;
+      margin-top: 4px;
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.45;
+    }
+
+    .section {
+      margin-top: 18px;
+      display: grid;
+      grid-template-columns: .95fr 1.05fr;
+      gap: 18px;
+      align-items: stretch;
+    }
+
+    .principle-grid,
+    .promise-grid {
+      margin-top: 16px;
+      display: grid;
+      gap: 10px;
+    }
+
+    .principle-grid {
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
+
+    .promise-grid {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .principle,
+    .promise {
+      padding: 14px;
+      min-height: 104px;
+      border-radius: var(--radius);
+      background: #f7faf4;
+      border: 1px solid var(--line);
+    }
+
+    .principle strong,
+    .promise strong {
+      display: block;
+      font-size: 15px;
+    }
+
+    .principle span,
+    .promise span {
+      display: block;
+      margin-top: 8px;
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.45;
+    }
+
+    .cta {
+      min-height: 100%;
+      display: grid;
+      align-content: center;
+      background: linear-gradient(135deg, #183f2c, #2b6d49);
+      color: var(--white);
+    }
+
+    .cta p {
+      margin: 10px 0 0;
+      color: rgba(255, 255, 255, .78);
+      line-height: 1.55;
+    }
+
+    .buttons {
+      margin-top: 20px;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+    }
+
+    .button {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 42px;
+      padding: 0 16px;
+      border-radius: 999px;
+      border: 1px solid rgba(255, 255, 255, .28);
+      background: var(--white);
+      color: var(--leaf-deep);
+      font-weight: 700;
+      font-size: 14px;
+    }
+
+    .button.secondary {
+      background: transparent;
+      color: var(--white);
+    }
+
+    footer {
+      width: min(1180px, calc(100% - 32px));
+      margin: 0 auto;
+      padding: 18px 0 34px;
+      color: var(--muted);
+      font-size: 12px;
+      display: flex;
+      justify-content: space-between;
+      gap: 14px;
+      border-top: 1px solid var(--line);
+    }
+
+    @media (max-width: 980px) {
+      .hero,
+      .section {
+        grid-template-columns: 1fr;
+      }
+
+      .camera,
+      .camera img {
+        min-height: 520px;
+      }
+    }
+
+    @media (max-width: 720px) {
+      .nav {
+        width: min(100% - 24px, 1180px);
+        min-height: 62px;
+      }
+
+      .brand span,
+      .weather-tag {
+        display: none;
+      }
+
+      main {
+        width: min(100% - 24px, 1180px);
+        padding-top: 14px;
+      }
+
+      .camera,
+      .camera img {
+        min-height: 520px;
+      }
+
+      .camera-top,
+      .camera-bottom {
+        left: 14px;
+        right: 14px;
+      }
+
+      .camera-bottom {
+        display: grid;
+        gap: 18px;
+      }
+
+      .quick-proof,
+      .photo-pair,
+      .principle-grid,
+      .promise-grid {
+        grid-template-columns: 1fr;
+      }
+
+      .adoption-meta {
+        grid-template-columns: 1fr;
+      }
+
+      .orbit-row {
+        grid-template-columns: 40px 1fr;
+      }
+
+      .orbit-time {
+        grid-column: 2;
+      }
+
+      footer {
+        width: min(100% - 24px, 1180px);
+        display: block;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="shell">
+    <header>
+      <nav class="nav" aria-label="主要導覽">
+        <a class="brand" href="#top" aria-label="福農監控平台首頁">
+          <span class="mark">福</span>
+          <span>
+            <strong>福農監控平台</strong>
+            <span>企業衛星農場</span>
+          </span>
+        </a>
+        <div class="nav-actions">
+          <span class="status-pill"><span class="dot"></span>如鄰農場連線中</span>
+        </div>
+      </nav>
+    </header>
+
+    <main id="top">
+      <section class="hero" aria-label="企業認養農場即時狀態">
+        <div class="camera">
+          <img src="assets/greenhouse-room.jpg" alt="麻豆一場自有溫室植物攝像頭畫面">
+          <div class="camera-top">
+            <span class="live-tag"><span class="live-dot"></span>LIVE 植物攝像頭</span>
+            <span class="weather-tag">麻豆一場 · A 區 · 28.4°C · RH 72%</span>
+          </div>
+          <div class="camera-bottom">
+            <div class="camera-title">
+              <p>乾淨、好逛、會被分享的企業認養農場。</p>
+              <h1>如鄰農場，看得到照護。</h1>
+            </div>
+            <div class="quick-proof" aria-label="今日摘要">
+              <div class="proof-item">
+                <strong>120</strong>
+                <span>認養株數</span>
+              </div>
+              <div class="proof-item">
+                <strong>2</strong>
+                <span>今日 Orbit 照護紀錄</span>
+              </div>
+              <div class="proof-item">
+                <strong>98%</strong>
+                <span>本週照護準時率</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <aside class="side" aria-label="認養與 WeGrow Orbit 履歷">
+          <section class="panel adoption-card">
+            <h2>企業衛星農場認養專區</h2>
+            <p class="panel-sub">把自有溫室、企業合約與 Orbit 履歷放在同一個乾淨頁面。</p>
+            <div class="adoption-meta">
+              <div class="meta-box">
+                <span>認養期間</span>
+                <strong>2026.07 - 2027.06</strong>
+              </div>
+              <div class="meta-box">
+                <span>照護模式</span>
+                <strong>WeGrow Orbit 履歷</strong>
+              </div>
+              <div class="meta-box">
+                <span>作物</span>
+                <strong>麻豆一場草莓 / 溫室作物</strong>
+              </div>
+              <div class="meta-box">
+                <span>公開狀態</span>
+                <strong>企業可分享</strong>
+              </div>
+            </div>
+          </section>
+
+          <section class="panel">
+            <h3>今日 WeGrow Orbit 履歷</h3>
+            <p class="panel-sub">企業客戶只看必要資訊：澆水、施肥、巡場。</p>
+            <div class="orbit-list">
+              <div class="orbit-row">
+                <div class="orbit-icon">水</div>
+                <div>
+                  <strong>A 區微量補水</strong>
+                  <span>每株 180 mL，依乾濕狀態補水</span>
+                </div>
+                <div class="orbit-time">08:20</div>
+              </div>
+              <div class="orbit-row">
+                <div class="orbit-icon">肥</div>
+                <div>
+                  <strong>低 EC 營養液</strong>
+                  <span>依 Orbit 配方紀錄，避免雨後鹽分累積</span>
+                </div>
+                <div class="orbit-time">09:05</div>
+              </div>
+              <div class="orbit-row">
+                <div class="orbit-icon">巡</div>
+                <div>
+                  <strong>葉面與根區巡檢</strong>
+                  <span>未見急迫病蟲害，明早再巡</span>
+                </div>
+                <div class="orbit-time">10:10</div>
+              </div>
+            </div>
+          </section>
+
+          <section class="panel neighbor-note">
+            <div class="avatar">農</div>
+            <div>
+              <h3>今天像鄰居一樣回報</h3>
+              <p class="panel-sub">「早上有補水，葉片挺，溫室通風正常。企業認養區今天狀態穩。」</p>
+            </div>
+          </section>
+
+          <div class="photo-pair" aria-label="自有農場照片">
+            <div class="photo-card">
+              <img src="assets/satellite-farm.jpg" alt="麻豆一場企業衛星農場空拍照片">
+              <span>衛星農場</span>
+            </div>
+            <div class="photo-card">
+              <img src="assets/strawberry-close.jpg" alt="麻豆一場草莓收成照片">
+              <span>流量畫面</span>
+            </div>
+          </div>
+        </aside>
+      </section>
+
+      <section class="section" aria-label="認養承諾與照護時間線">
+        <div class="panel">
+          <h2>三個設計元素</h2>
+          <p class="panel-sub">這頁不是農業後台，而是企業客戶願意打開、願意轉傳、看完能安心的認養入口。</p>
+          <div class="principle-grid">
+            <div class="principle">
+              <strong>乾淨</strong>
+              <span>第一屏只放照片、認養狀態、三筆照護履歷。</span>
+            </div>
+            <div class="principle">
+              <strong>體驗</strong>
+              <span>用自有溫室照與像鄰居回報的語氣，降低距離感。</span>
+            </div>
+            <div class="principle">
+              <strong>流量</strong>
+              <span>草莓、空拍、認養成果可以直接轉成社群素材。</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="panel">
+          <h2>企業認養只保留四個承諾</h2>
+          <p class="panel-sub">把技術藏在背後，把可信任的證據放在前面。</p>
+          <div class="promise-grid">
+            <div class="promise">
+              <strong>看得到植物</strong>
+              <span>攝像頭作為第一入口，企業客戶不用登入複雜後台。</span>
+            </div>
+            <div class="promise">
+              <strong>查得到照護</strong>
+              <span>澆水、施肥、巡場來自 WeGrow Orbit 履歷。</span>
+            </div>
+            <div class="promise">
+              <strong>說得出影響力</strong>
+              <span>認養株數、照護準時率、月報可支援 CSR/ESG 對外溝通。</span>
+            </div>
+            <div class="promise">
+              <strong>感覺像鄰居</strong>
+              <span>不是冷冰冰數據牆，而是每天有人看顧的在地農場。</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="panel">
+          <h2>最近照護時間線</h2>
+          <p class="panel-sub">企業可以一眼知道這些植物今天不是被放著，而是被照顧著。</p>
+          <div class="timeline">
+            <div class="time-row">
+              <time>今天 10:10</time>
+              <div>
+                <strong>完成認養區巡場</strong>
+                <span>葉面、根區與滴灌線正常，無需企業端處理。</span>
+              </div>
+            </div>
+            <div class="time-row">
+              <time>今天 09:05</time>
+              <div>
+                <strong>施肥履歷寫入 Orbit</strong>
+                <span>保留配方、區域、時間與操作人員，可輸出月報。</span>
+              </div>
+            </div>
+            <div class="time-row">
+              <time>今天 08:20</time>
+              <div>
+                <strong>依濕度狀態補水</strong>
+                <span>避免只照時間表灌溉，改以植株狀態與根區紀錄判斷。</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="section" aria-label="企業行動">
+        <div class="panel cta">
+          <h2>企業認養，不只是贊助。</h2>
+          <p>這是一個可以看、可以查、可以分享的農場參與證明。福農監控平台把衛星農場、企業合約與 WeGrow Orbit 履歷合在同一個極簡頁面。</p>
+          <div class="buttons">
+            <a class="button" href="#top">查看即時農場</a>
+            <a class="button secondary" href="outputs/enterprise_adoption/亞果企業認養_甘特圖_國際案例15.xlsx">下載認養規劃</a>
+          </div>
+        </div>
+        <div class="panel">
+          <h2>下一版可接真實資料</h2>
+          <p class="panel-sub">目前頁面已預留攝像頭、Orbit 履歷與企業合約欄位。正式串接時，只需把示意資料換成 API 或攝影機串流。</p>
+          <div class="orbit-list">
+            <div class="orbit-row">
+              <div class="orbit-icon">CAM</div>
+              <div>
+                <strong>攝像頭來源</strong>
+                <span>替換為企業認養區 RTSP/HLS/iframe 串流。</span>
+              </div>
+              <div class="orbit-time">ready</div>
+            </div>
+            <div class="orbit-row">
+              <div class="orbit-icon">API</div>
+              <div>
+                <strong>WeGrow Orbit 履歷</strong>
+                <span>串接澆水、施肥、巡場、病蟲害紀錄。</span>
+              </div>
+              <div class="orbit-time">ready</div>
+            </div>
+            <div class="orbit-row">
+              <div class="orbit-icon">PDF</div>
+              <div>
+                <strong>企業月報</strong>
+                <span>認養成果、照片、照護紀錄與 CSR 摘要。</span>
+              </div>
+              <div class="orbit-time">ready</div>
+            </div>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <footer>
+      <span>福農監控平台 | 企業衛星農場</span>
+      <span>Prototype build for enterprise adoption experience</span>
+    </footer>
+  </div>
+</body>
+</html>
