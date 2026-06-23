@@ -1,0 +1,746 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>善農科技 | 農場灌溉系統報價</title>
+  <meta name="description" content="善農科技農場灌溉系統報價工具，支援方案A精準滴灌、方案B抑草蓆溝渠淹灌、車馬費與農業補助估算。">
+  <style>
+    :root {
+      color-scheme: light;
+      --ink: #18211b;
+      --muted: #607064;
+      --paper: #f7f5ee;
+      --panel: #ffffff;
+      --line: #d8ded2;
+      --green: #17462c;
+      --leaf: #2f7d45;
+      --gold: #ba8a2f;
+      --blue: #245b73;
+      --danger: #b43c32;
+      --soft: #e9efe4;
+      --shadow: 0 18px 50px rgba(24, 33, 27, .12);
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      font-family: "Noto Sans TC", "Microsoft JhengHei", Arial, sans-serif;
+      background: var(--paper);
+      color: var(--ink);
+      letter-spacing: 0;
+    }
+
+    button, input, select, textarea {
+      font: inherit;
+    }
+
+    .shell {
+      min-height: 100vh;
+      display: grid;
+      grid-template-columns: minmax(320px, 440px) 1fr;
+    }
+
+    .side {
+      position: sticky;
+      top: 0;
+      height: 100vh;
+      padding: 28px;
+      color: #fff;
+      background:
+        linear-gradient(rgba(16, 43, 28, .82), rgba(16, 43, 28, .92)),
+        url("https://images.unsplash.com/photo-1625246333195-78d9c38ad449?auto=format&fit=crop&w=1400&q=80") center / cover;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      font-weight: 800;
+      font-size: 18px;
+    }
+
+    .mark {
+      width: 40px;
+      height: 40px;
+      display: grid;
+      place-items: center;
+      border: 1px solid rgba(255,255,255,.45);
+      background: rgba(255,255,255,.16);
+    }
+
+    .side h1 {
+      margin: 42px 0 14px;
+      font-size: clamp(34px, 4vw, 56px);
+      line-height: 1.05;
+      letter-spacing: 0;
+    }
+
+    .side p {
+      margin: 0;
+      color: rgba(255,255,255,.82);
+      line-height: 1.8;
+      max-width: 34em;
+    }
+
+    .side-meta {
+      display: grid;
+      gap: 12px;
+      margin-top: 28px;
+    }
+
+    .metric {
+      border-top: 1px solid rgba(255,255,255,.26);
+      padding-top: 12px;
+      display: flex;
+      justify-content: space-between;
+      gap: 16px;
+      color: rgba(255,255,255,.84);
+    }
+
+    .metric strong {
+      color: #fff;
+      white-space: nowrap;
+    }
+
+    main {
+      padding: 26px;
+    }
+
+    .toolbar {
+      position: sticky;
+      top: 0;
+      z-index: 5;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      padding: 14px 0 20px;
+      background: linear-gradient(var(--paper) 80%, rgba(247,245,238,0));
+    }
+
+    .tabs {
+      display: inline-flex;
+      border: 1px solid var(--line);
+      background: var(--panel);
+      box-shadow: var(--shadow);
+    }
+
+    .tab {
+      border: 0;
+      background: transparent;
+      color: var(--muted);
+      min-height: 42px;
+      padding: 0 18px;
+      cursor: pointer;
+      font-weight: 700;
+    }
+
+    .tab.active {
+      background: var(--green);
+      color: #fff;
+    }
+
+    .actions {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+      justify-content: flex-end;
+    }
+
+    .btn {
+      border: 1px solid var(--line);
+      background: var(--panel);
+      color: var(--ink);
+      min-height: 42px;
+      padding: 0 14px;
+      cursor: pointer;
+      font-weight: 700;
+    }
+
+    .btn.primary {
+      border-color: var(--green);
+      background: var(--green);
+      color: #fff;
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) 340px;
+      gap: 18px;
+      align-items: start;
+    }
+
+    .section {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      box-shadow: var(--shadow);
+      margin-bottom: 18px;
+    }
+
+    .section header {
+      padding: 18px 20px;
+      border-bottom: 1px solid var(--line);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 18px;
+    }
+
+    .section h2, .section h3 {
+      margin: 0;
+      font-size: 18px;
+    }
+
+    .section-body {
+      padding: 18px 20px 20px;
+    }
+
+    .fields {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 14px;
+    }
+
+    label {
+      display: grid;
+      gap: 7px;
+      color: var(--muted);
+      font-size: 13px;
+      font-weight: 700;
+    }
+
+    input, select, textarea {
+      width: 100%;
+      border: 1px solid var(--line);
+      background: #fff;
+      color: var(--ink);
+      padding: 11px 12px;
+      min-height: 42px;
+      outline: none;
+    }
+
+    input:focus, select:focus, textarea:focus {
+      border-color: var(--leaf);
+      box-shadow: 0 0 0 3px rgba(47, 125, 69, .12);
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 14px;
+    }
+
+    th, td {
+      border-bottom: 1px solid var(--line);
+      padding: 10px 8px;
+      text-align: left;
+      vertical-align: middle;
+    }
+
+    th {
+      color: var(--muted);
+      background: #f2f5ef;
+      font-size: 12px;
+    }
+
+    td.num, th.num {
+      text-align: right;
+      white-space: nowrap;
+    }
+
+    td input {
+      min-height: 36px;
+      padding: 8px;
+      text-align: right;
+    }
+
+    .summary {
+      position: sticky;
+      top: 80px;
+      display: grid;
+      gap: 14px;
+    }
+
+    .total-card {
+      background: var(--green);
+      color: #fff;
+      padding: 22px;
+      box-shadow: var(--shadow);
+    }
+
+    .total-card small {
+      display: block;
+      color: rgba(255,255,255,.74);
+      font-weight: 700;
+    }
+
+    .total-card strong {
+      display: block;
+      margin-top: 8px;
+      font-size: 34px;
+      line-height: 1;
+    }
+
+    .line-list {
+      display: grid;
+      gap: 9px;
+      margin: 0;
+    }
+
+    .line {
+      display: flex;
+      justify-content: space-between;
+      gap: 14px;
+      padding-bottom: 9px;
+      border-bottom: 1px solid var(--line);
+    }
+
+    .line span:first-child {
+      color: var(--muted);
+    }
+
+    .note {
+      background: #fff8e6;
+      border: 1px solid #ead8a8;
+      padding: 14px;
+      color: #665021;
+      line-height: 1.7;
+      font-size: 14px;
+    }
+
+    .warning {
+      background: #fff0ee;
+      border-color: #efc5bf;
+      color: #73332c;
+    }
+
+    .subsidy-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 14px;
+    }
+
+    .subsidy {
+      border: 1px solid var(--line);
+      padding: 16px;
+      background: #fafbf8;
+    }
+
+    .subsidy strong {
+      display: block;
+      font-size: 24px;
+      margin-top: 8px;
+      color: var(--blue);
+    }
+
+    .quote-output {
+      white-space: pre-wrap;
+      background: #10251a;
+      color: #f2fff6;
+      padding: 18px;
+      min-height: 220px;
+      line-height: 1.7;
+      overflow: auto;
+    }
+
+    .footer {
+      color: var(--muted);
+      font-size: 13px;
+      padding: 10px 2px 30px;
+      line-height: 1.7;
+    }
+
+    @media (max-width: 1080px) {
+      .shell { grid-template-columns: 1fr; }
+      .side {
+        position: relative;
+        height: auto;
+        min-height: 460px;
+      }
+      .grid { grid-template-columns: 1fr; }
+      .summary { position: static; }
+    }
+
+    @media (max-width: 720px) {
+      main { padding: 16px; }
+      .side { padding: 22px; }
+      .toolbar { position: relative; align-items: stretch; flex-direction: column; }
+      .tabs, .actions { width: 100%; }
+      .tab { flex: 1; padding: 0 8px; }
+      .fields, .subsidy-grid { grid-template-columns: 1fr; }
+      table { font-size: 13px; }
+      th:nth-child(3), td:nth-child(3) { display: none; }
+    }
+
+    @media print {
+      .side, .toolbar, .inputs-table, .note.warning { display: none; }
+      .shell, .grid { display: block; }
+      main { padding: 0; }
+      .section, .total-card { box-shadow: none; break-inside: avoid; }
+      body { background: #fff; }
+    }
+  </style>
+</head>
+<body>
+  <div class="shell">
+    <aside class="side">
+      <div>
+        <div class="brand"><span class="mark">農</span><span>善農科技股份有限公司</span></div>
+        <h1>農場灌溉系統報價工具</h1>
+        <p>輸入農場資訊、施工距離與數量，即時計算精準滴灌、抑草蓆溝渠淹灌、營業稅、車馬費與農業補助估算。</p>
+        <div class="side-meta">
+          <div class="metric"><span>硬體設備折扣</span><strong>九折</strong></div>
+          <div class="metric"><span>營業稅</span><strong>5%</strong></div>
+          <div class="metric"><span>版本日期</span><strong>2026-04-11</strong></div>
+        </div>
+      </div>
+      <p>110 台北市信義區忠孝東路五段 1 之 1 號 12 樓<br>clement@wegrow.asia</p>
+    </aside>
+
+    <main>
+      <div class="toolbar">
+        <div class="tabs" role="tablist" aria-label="報價方案">
+          <button class="tab active" data-plan="A" type="button">方案 A 滴灌</button>
+          <button class="tab" data-plan="B" type="button">方案 B 淹灌</button>
+          <button class="tab" data-plan="AB" type="button">A+B 比較</button>
+        </div>
+        <div class="actions">
+          <button class="btn" id="resetBtn" type="button">重設數量</button>
+          <button class="btn" id="copyBtn" type="button">複製摘要</button>
+          <button class="btn primary" type="button" onclick="window.print()">列印報價</button>
+        </div>
+      </div>
+
+      <div class="grid">
+        <div>
+          <section class="section">
+            <header>
+              <h2>客戶與農場資訊</h2>
+            </header>
+            <div class="section-body fields">
+              <label>客戶名稱 / 農場名稱
+                <input id="customer" value="高雄梓官有機農場">
+              </label>
+              <label>施工地址
+                <input id="address" value="高雄市梓官區">
+              </label>
+              <label>單程距離（公里）
+                <input id="distance" type="number" min="0" step="1" value="350">
+              </label>
+              <label>施工天數
+                <input id="days" type="number" min="0" step="1" value="5">
+              </label>
+              <label>農地面積（公頃）
+                <input id="hectare" type="number" min="0" step="0.01" value="1.82">
+              </label>
+              <label>補助情境
+                <select id="subsidyMode">
+                  <option value="outdoor">室外農地：水利署管路灌溉</option>
+                  <option value="greenhouse">溫室室內：農糧署設施自動化</option>
+                  <option value="organic">溫室有機：農糧署 60% 估算</option>
+                </select>
+              </label>
+            </div>
+          </section>
+
+          <section class="section inputs-table">
+            <header>
+              <h2 id="itemsTitle">方案 A 滴灌數量</h2>
+              <span id="planHint">AB 雙路，RO 苦鹹水淡化</span>
+            </header>
+            <div class="section-body">
+              <table>
+                <thead>
+                  <tr>
+                    <th>項目</th>
+                    <th class="num">數量</th>
+                    <th>單位</th>
+                    <th class="num">折後單價</th>
+                    <th class="num">小計</th>
+                  </tr>
+                </thead>
+                <tbody id="itemsBody"></tbody>
+              </table>
+            </div>
+          </section>
+
+          <section class="section">
+            <header><h2>水質與補助提醒</h2></header>
+            <div class="section-body">
+              <div class="note warning">
+                梓官沿海地下水 TDS 估計 1,000-3,000 ppm。方案 A 建議必裝 ROTEK RB-6000 苦鹹水淡化；方案 B 長期使用高鈉地下水可能造成土壤鈉化硬化，建議年度水質檢測。
+              </div>
+              <div class="subsidy-grid" style="margin-top:14px">
+                <div class="subsidy">
+                  <span>室外農地補助估算</span>
+                  <strong id="outdoorSubsidy">NT$0</strong>
+                  <small>每人每年上限 NT$500,000；實際以主管機關核定為準。</small>
+                </div>
+                <div class="subsidy">
+                  <span>溫室設施自動化估算</span>
+                  <strong id="greenhouseSubsidy">NT$0</strong>
+                  <small>一般 50%，有機 60%；估算上限 NT$1,300,000/公頃。</small>
+                </div>
+              </div>
+            </div>
+          </section>
+
+          <section class="section">
+            <header><h2>報價摘要</h2></header>
+            <div class="quote-output" id="quoteOutput"></div>
+          </section>
+        </div>
+
+        <aside class="summary">
+          <div class="total-card">
+            <small>含稅總計</small>
+            <strong id="grandTotal">NT$0</strong>
+          </div>
+          <section class="section">
+            <header><h3>金額拆分</h3></header>
+            <div class="section-body line-list">
+              <div class="line"><span>小計（未稅）</span><strong id="subtotal">NT$0</strong></div>
+              <div class="line"><span>營業稅 5%</span><strong id="tax">NT$0</strong></div>
+              <div class="line"><span>車馬費（另計）</span><strong id="travel">NT$0</strong></div>
+              <div class="line"><span>補助情境估算</span><strong id="selectedSubsidy">NT$0</strong></div>
+              <div class="line"><span>補助後參考</span><strong id="afterSubsidy">NT$0</strong></div>
+            </div>
+          </section>
+          <div class="note">
+            車馬費公式：單程距離 ÷ 7 × 35 + 單程距離，再乘以施工天數。車馬費不列入含稅總價。
+          </div>
+        </aside>
+      </div>
+
+      <div class="footer">
+        補助資料來源：水利署管路灌溉設施補助、農糧署設施自動化補助。所有補助金額僅為估算，正式申請以前請向主管機關確認當年度方案與核銷規定。
+      </div>
+    </main>
+  </div>
+
+  <script>
+    const money = value => `NT$${Math.round(value).toLocaleString("zh-TW")}`;
+    const hardware = price => price * 0.9;
+
+    const catalog = {
+      gateway: { name: "網關 GWY-A09L", unit: "件", price: hardware(8800), base: true },
+      switch32: { name: "智慧開關組 SW-SET32", unit: "件", price: hardware(66800), base: true },
+      envPoint: { name: "環境控制點數", unit: "點", price: 4000 },
+      fertPoint: { name: "水養液控制點數", unit: "點", price: 4500 },
+      labor: { name: "人力（2人天）", unit: "天", price: 6000 },
+      valve3: { name: "3吋電磁閥 IRH", unit: "個", price: hardware(3500) },
+      valve1: { name: "1吋電磁閥 CLABER CA-90812", unit: "個", price: hardware(800) },
+      motor1: { name: "灌溉馬達 1匹", unit: "台", price: hardware(6500) },
+      motor15: { name: "灌溉馬達 1.5匹", unit: "台", price: hardware(9500) },
+      ro: { name: "RO苦鹹水淡化 ROTEK RB-6000", unit: "式", price: 250000 },
+      tank10: { name: "10噸儲水桶", unit: "個", price: hardware(18000) },
+      tank5: { name: "5噸液肥桶", unit: "個", price: hardware(10000) },
+      filter1: { name: "疊片過濾器 1吋 欣禾 SH-DF-10", unit: "個", price: hardware(300) },
+      filter15: { name: "疊片過濾器 1.5吋 欣禾 SH-DF-15", unit: "個", price: hardware(750) },
+      dripTube: { name: "IRRITEC 16mm 滴灌管 400m/捲", unit: "捲", price: hardware(5700) },
+      dripper: { name: "穩壓滴頭四爪滴箭組", unit: "個", price: hardware(25) },
+      peMain: { name: "PE主幹管 1吋×50m", unit: "捲", price: hardware(1500) },
+      peJoint: { name: "PE管接頭組", unit: "式", price: hardware(3000) },
+      wire: { name: "電線", unit: "式", price: 8000 },
+      consumable: { name: "現場耗材材料費", unit: "式", price: 5000 },
+      weedMat: { name: "抑草蓆（半透水PE布）", unit: "m²", price: 30 },
+      ditch: { name: "溝渠挖掘施工", unit: "m", price: 80 }
+    };
+
+    const plans = {
+      A: {
+        title: "方案 A 滴灌數量",
+        hint: "AB 雙路，RO 苦鹹水淡化",
+        summaryTitle: "方案A 精準滴灌",
+        items: [
+          ["gateway", 1], ["switch32", 1], ["envPoint", 0], ["fertPoint", 25], ["labor", 10],
+          ["valve3", 7], ["valve1", 16], ["motor1", 2], ["ro", 1], ["tank10", 3], ["tank5", 1],
+          ["filter1", 1], ["dripTube", 2], ["dripper", 1020], ["peMain", 4], ["peJoint", 1],
+          ["wire", 1], ["consumable", 1]
+        ]
+      },
+      B: {
+        title: "方案 B 淹灌數量",
+        hint: "抑草蓆溝渠淹灌，雙路雙馬達",
+        summaryTitle: "方案B 抑草蓆溝渠淹灌",
+        items: [
+          ["gateway", 1], ["switch32", 1], ["envPoint", 0], ["fertPoint", 29], ["labor", 12],
+          ["valve3", 2], ["valve1", 25], ["motor15", 2], ["tank10", 2], ["filter15", 2],
+          ["peMain", 4], ["peJoint", 1], ["weedMat", 750], ["ditch", 1248], ["wire", 1], ["consumable", 1]
+        ]
+      }
+    };
+
+    let activePlan = "A";
+    const quantities = {};
+
+    function ensurePlan(planKey) {
+      if (!quantities[planKey]) {
+        quantities[planKey] = {};
+        plans[planKey].items.forEach(([key, qty]) => quantities[planKey][key] = qty);
+      }
+    }
+
+    function visiblePlanKeys() {
+      return activePlan === "AB" ? ["A", "B"] : [activePlan];
+    }
+
+    function lineItems(planKey) {
+      ensurePlan(planKey);
+      return plans[planKey].items.map(([key]) => {
+        const item = catalog[key];
+        const qty = Number(quantities[planKey][key] || 0);
+        return { key, ...item, qty, total: qty * item.price };
+      });
+    }
+
+    function subtotal(planKey) {
+      return lineItems(planKey).reduce((sum, item) => sum + item.total, 0);
+    }
+
+    function controlSubtotal(planKey) {
+      const eligibleKeys = ["gateway", "switch32", "envPoint", "fertPoint", "labor", "valve3", "valve1"];
+      return lineItems(planKey).filter(item => eligibleKeys.includes(item.key)).reduce((sum, item) => sum + item.total, 0);
+    }
+
+    function motorSubsidy(planKey) {
+      return lineItems(planKey).filter(item => item.key.startsWith("motor")).reduce((sum, item) => sum + item.qty * 4500, 0);
+    }
+
+    function tankSubsidy(planKey) {
+      return lineItems(planKey).filter(item => item.key === "tank10").reduce((sum, item) => sum + item.qty * 24000, 0);
+    }
+
+    function calc() {
+      const keys = visiblePlanKeys();
+      const sub = keys.reduce((sum, key) => sum + subtotal(key), 0);
+      const tax = sub * 0.05;
+      const grand = sub + tax;
+      const distance = Number(document.getElementById("distance").value || 0);
+      const days = Number(document.getElementById("days").value || 0);
+      const hectare = Number(document.getElementById("hectare").value || 0);
+      const travel = ((distance / 7) * 35 + distance) * days;
+      const hasA = keys.includes("A");
+      const dripSubsidy = hasA ? hectare * 200000 : 0;
+      const control = keys.reduce((sum, key) => sum + Math.min(controlSubtotal(key) * 0.5, hectare * 230000), 0);
+      const outdoor = Math.min(500000, dripSubsidy + control + keys.reduce((sum, key) => sum + motorSubsidy(key) + tankSubsidy(key), 0), grand * 0.5);
+      const greenhouse50 = Math.min(hectare * 1300000, grand * 0.5);
+      const greenhouse60 = Math.min(hectare * 1300000, grand * 0.6);
+      const mode = document.getElementById("subsidyMode").value;
+      const selected = mode === "outdoor" ? outdoor : (mode === "organic" ? greenhouse60 : greenhouse50);
+
+      document.getElementById("subtotal").textContent = money(sub);
+      document.getElementById("tax").textContent = money(tax);
+      document.getElementById("grandTotal").textContent = money(grand);
+      document.getElementById("travel").textContent = money(travel);
+      document.getElementById("outdoorSubsidy").textContent = money(outdoor);
+      document.getElementById("greenhouseSubsidy").textContent = `${money(greenhouse50)} / ${money(greenhouse60)}`;
+      document.getElementById("selectedSubsidy").textContent = money(selected);
+      document.getElementById("afterSubsidy").textContent = money(Math.max(0, grand - selected));
+
+      renderQuote({ keys, sub, tax, grand, travel, outdoor, greenhouse50, greenhouse60, selected });
+    }
+
+    function renderItems() {
+      const body = document.getElementById("itemsBody");
+      body.innerHTML = "";
+      const planKeys = visiblePlanKeys();
+      document.getElementById("itemsTitle").textContent = activePlan === "AB" ? "A+B 方案數量比較" : plans[activePlan].title;
+      document.getElementById("planHint").textContent = activePlan === "AB" ? "同時顯示兩套方案，合併計算總額" : plans[activePlan].hint;
+
+      planKeys.forEach(planKey => {
+        if (planKeys.length > 1) {
+          const tr = document.createElement("tr");
+          tr.innerHTML = `<th colspan="5">${plans[planKey].summaryTitle}</th>`;
+          body.appendChild(tr);
+        }
+        lineItems(planKey).forEach(item => {
+          const tr = document.createElement("tr");
+          tr.innerHTML = `
+            <td>${item.name}</td>
+            <td class="num"><input type="number" min="0" step="1" value="${item.qty}" data-plan="${planKey}" data-key="${item.key}" aria-label="${item.name}數量"></td>
+            <td>${item.unit}</td>
+            <td class="num">${money(item.price)}</td>
+            <td class="num">${money(item.total)}</td>
+          `;
+          body.appendChild(tr);
+        });
+      });
+
+      body.querySelectorAll("input").forEach(input => {
+        input.addEventListener("input", event => {
+          const target = event.currentTarget;
+          ensurePlan(target.dataset.plan);
+          quantities[target.dataset.plan][target.dataset.key] = Number(target.value || 0);
+          renderItems();
+          calc();
+        });
+      });
+    }
+
+    function renderQuote(totals) {
+      const customer = document.getElementById("customer").value || "未填寫";
+      const address = document.getElementById("address").value || "未填寫";
+      const lines = [];
+      lines.push(`農場灌溉系統報價摘要`);
+      lines.push(`客戶/農場：${customer}`);
+      lines.push(`施工地址：${address}`);
+      lines.push(`報價方案：${totals.keys.map(key => plans[key].summaryTitle).join(" + ")}`);
+      lines.push("");
+      totals.keys.forEach(key => {
+        lines.push(`【${plans[key].summaryTitle}】`);
+        lineItems(key).filter(item => item.qty > 0).forEach(item => {
+          lines.push(`- ${item.name}：${item.qty}${item.unit} × ${money(item.price)} = ${money(item.total)}`);
+        });
+        lines.push(`小計：${money(subtotal(key))}`);
+        lines.push("");
+      });
+      lines.push(`未稅小計：${money(totals.sub)}`);
+      lines.push(`營業稅 5%：${money(totals.tax)}`);
+      lines.push(`含稅總計：${money(totals.grand)}`);
+      lines.push(`車馬費另計：${money(totals.travel)}`);
+      lines.push(`補助情境估算：${money(totals.selected)}`);
+      lines.push(`補助後參考：${money(Math.max(0, totals.grand - totals.selected))}`);
+      lines.push("");
+      lines.push("備註：硬體設備已內建九折；施工人力、RO主機、抑草蓆、溝渠施工無折扣。補助金額僅供參考，正式申請以前請向主管機關確認。");
+      document.getElementById("quoteOutput").textContent = lines.join("\n");
+    }
+
+    document.querySelectorAll(".tab").forEach(tab => {
+      tab.addEventListener("click", () => {
+        activePlan = tab.dataset.plan;
+        document.querySelectorAll(".tab").forEach(t => t.classList.toggle("active", t === tab));
+        renderItems();
+        calc();
+      });
+    });
+
+    ["customer", "address", "distance", "days", "hectare", "subsidyMode"].forEach(id => {
+      document.getElementById(id).addEventListener("input", calc);
+    });
+
+    document.getElementById("resetBtn").addEventListener("click", () => {
+      delete quantities.A;
+      delete quantities.B;
+      renderItems();
+      calc();
+    });
+
+    document.getElementById("copyBtn").addEventListener("click", async () => {
+      await navigator.clipboard.writeText(document.getElementById("quoteOutput").textContent);
+      const btn = document.getElementById("copyBtn");
+      const original = btn.textContent;
+      btn.textContent = "已複製";
+      setTimeout(() => btn.textContent = original, 1200);
+    });
+
+    renderItems();
+    calc();
+  </script>
+</body>
+</html>
