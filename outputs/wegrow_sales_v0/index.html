@@ -1,0 +1,198 @@
+﻿<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>WeGrow Sales V0</title>
+  <link rel="stylesheet" href="style.css?v=orbit-shell-v2">
+</head>
+<body>
+  <div class="app">
+    <header class="topbar">
+      <div class="header-left">
+        <div class="logo-mark">☘</div>
+        <div class="logo-text">WeGrow_<span>Sales</span></div>
+      </div>
+      <div class="top-actions">
+        <strong class="user-name">Clement Lee</strong>
+        <span class="role-pill">管理者</span>
+        <a class="top-link" href="../../">回總入口</a>
+      </div>
+    </header>
+
+    <aside class="sidebar" aria-label="主選單">
+      <div class="brand-block">
+        <div class="brand">銷售系統</div>
+        <div class="subbrand">Sales V0</div>
+      </div>
+      <button class="nav-item active" data-panel="sales" type="button">銷售作戰台</button>
+      <button class="nav-item" data-panel="adoption" type="button">農業黑客松 / 認養農場</button>
+    </aside>
+
+    <main class="main">
+      <section class="page-titlebar">
+        <div>
+          <p class="eyebrow">本機 V0 / 缺資料不編造 / 商譯</p>
+          <h1 id="panel-title">銷售作戰台</h1>
+        </div>
+        <div class="page-actions">
+          <button class="action-btn" type="button">＋ 新增紀錄</button>
+          <button class="action-btn primary" type="button">列印今日任務</button>
+        </div>
+      </section>
+
+      <section class="summary-grid" aria-label="每日摘要">
+        <article class="summary-card">
+          <span class="summary-label">今日 3 件事</span>
+          <strong id="task-summary">0 / 0</strong>
+        </article>
+        <article class="summary-card">
+          <span class="summary-label">待回留言</span>
+          <strong id="reply-summary">0</strong>
+        </article>
+        <article class="summary-card">
+          <span class="summary-label">B2B Gate</span>
+          <strong id="buyer-summary">G0</strong>
+        </article>
+        <article class="summary-card">
+          <span class="summary-label">發布佇列</span>
+          <strong id="publish-summary">0</strong>
+        </article>
+        <article class="summary-card danger">
+          <span class="summary-label">缺證據</span>
+          <strong id="gap-summary">0</strong>
+        </article>
+      </section>
+
+      <section class="content">
+        <section class="panel active workbench-panel" id="panel-workbench">
+          <nav class="subtab-bar" aria-label="銷售作戰台小分類">
+            <button class="subtab active" data-subpanel="sales-today" type="button">今日作業</button>
+            <button class="subtab" data-subpanel="sales-content" type="button">內容發布</button>
+            <button class="subtab" data-subpanel="sales-leads" type="button">留言名單</button>
+            <button class="subtab" data-subpanel="sales-buyers" type="button">買家 Gate</button>
+            <button class="subtab" data-subpanel="sales-evidence" type="button">證據包</button>
+            <button class="subtab" data-subpanel="sales-shangyi" type="button">商譯覆盤</button>
+            <button class="subtab" data-subpanel="sales-limits" type="button">系統限制</button>
+          </nav>
+
+          <section class="subpanel-section active" id="sales-today">
+            <div class="panel-head">
+              <div>
+                <h2>今日作業單</h2>
+                <p id="today-meta"></p>
+              </div>
+              <div class="progress-wrap">
+                <span id="progress-label">0%</span>
+                <div class="progress-track"><div class="progress-fill" id="today-progress"></div></div>
+              </div>
+            </div>
+            <section class="compass-block" aria-label="商譯指北針">
+              <div>
+                <h3>商譯指北針</h3>
+                <p>先判斷什麼最能讓威果本週多一個真實銷售訊號，再決定要不要新增功能。</p>
+              </div>
+              <div class="compass-grid" id="compass-grid"></div>
+            </section>
+            <div class="task-list" id="task-list"></div>
+            <h3>風險提醒</h3>
+            <div class="risk-list" id="risk-list"></div>
+          </section>
+
+          <section class="subpanel-section" id="sales-content">
+            <h2>內容排程</h2>
+            <table id="content-table"></table>
+            <div class="section-divider"></div>
+            <h2>發布佇列</h2>
+            <table id="publish-table"></table>
+            <p class="note">V0 只顯示佇列，不自動發布。任何跨平台發布、寄信、預購收款都要 Clement 人工核准。</p>
+          </section>
+
+          <section class="subpanel-section" id="sales-leads">
+            <h2>留言名單</h2>
+            <table id="lead-table"></table>
+            <p class="note">目前尚未接真實留言或等待名單資料，所以不做 AI Lead Scoring，也不編造冷溫熱分數。</p>
+          </section>
+
+          <section class="subpanel-section" id="sales-buyers">
+            <h2>買家 Gate</h2>
+            <table id="buyer-table"></table>
+          </section>
+
+          <section class="subpanel-section" id="sales-evidence">
+            <h2>證據包</h2>
+            <table id="evidence-table"></table>
+          </section>
+
+          <section class="subpanel-section" id="sales-shangyi">
+            <h2>商譯覆盤</h2>
+            <div class="shangyi-grid" id="shangyi-summary"></div>
+            <h3>價格 Benchmark</h3>
+            <table id="price-table"></table>
+          </section>
+
+          <section class="subpanel-section" id="sales-limits">
+            <h2>系統限制</h2>
+            <div class="note-list" id="limits-list"></div>
+          </section>
+        </section>
+
+        <section class="panel workbench-panel" id="panel-adoption">
+          <nav class="subtab-bar" aria-label="認養農場小分類">
+            <button class="subtab active" data-subpanel="adoption-guide" type="button">認養指北針</button>
+            <button class="subtab" data-subpanel="adoption-segments" type="button">客戶類型</button>
+            <button class="subtab" data-subpanel="adoption-offers" type="button">Offer 階梯</button>
+            <button class="subtab" data-subpanel="adoption-questions" type="button">必問問題</button>
+            <button class="subtab" data-subpanel="adoption-gate" type="button">證據 Gate</button>
+            <button class="subtab" data-subpanel="adoption-next" type="button">下一步</button>
+          </nav>
+
+          <section class="subpanel-section active" id="adoption-guide">
+            <div class="panel-head">
+              <div>
+                <h2>農業黑客松 / 認養農場</h2>
+                <p>給想承租、體驗、企業認養或共同參與農場的客戶使用；先判斷能不能成交，再決定要不要做素材。</p>
+              </div>
+            </div>
+
+            <section class="compass-block" aria-label="認養農場指北針">
+              <div>
+                <h3>認養農場指北針</h3>
+                <p>這個大 Tab 只服務一件事：把「想體驗 AI 農業的人」變成可追蹤、可報價、可交付的客戶。</p>
+              </div>
+              <div class="compass-grid" id="adoption-compass-grid"></div>
+            </section>
+          </section>
+
+          <section class="subpanel-section" id="adoption-segments">
+            <h2>客戶類型</h2>
+            <table id="adoption-segment-table"></table>
+          </section>
+
+          <section class="subpanel-section" id="adoption-offers">
+            <h2>Offer 階梯</h2>
+            <table id="adoption-offer-table"></table>
+          </section>
+
+          <section class="subpanel-section" id="adoption-questions">
+            <h2>成交前必問問題</h2>
+            <table id="adoption-question-table"></table>
+          </section>
+
+          <section class="subpanel-section" id="adoption-gate">
+            <h2>認養證據 Gate</h2>
+            <table id="adoption-evidence-table"></table>
+          </section>
+
+          <section class="subpanel-section" id="adoption-next">
+            <h2>下一步</h2>
+            <div class="note-list" id="adoption-next-list"></div>
+          </section>
+        </section>
+      </section>
+    </main>
+  </div>
+
+  <script src="app.js?v=orbit-tabs-v1"></script>
+</body>
+</html>

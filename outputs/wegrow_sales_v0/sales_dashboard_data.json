@@ -1,0 +1,405 @@
+﻿{
+  "generated_at": "2026-07-24",
+  "market_priority": "台灣先賣得動",
+  "buyer_gate_summary": "G0 查證中",
+  "sales_compass": [
+    {
+      "label": "北極星",
+      "rule": "本週先拿到真實銷售訊號",
+      "reason": "EP1 留言、等待名單、Carrefour / City'Super / Isetan 查證進度，比新增漂亮功能更重要。"
+    },
+    {
+      "label": "首屏順序",
+      "rule": "今日3件事 → 待回留言 → 買家 Gate → 發布佇列 → 缺證據",
+      "reason": "這是 Claude 建議的每日決策順序；不把週期性資料塞回第一屏。"
+    },
+    {
+      "label": "不編資料",
+      "rule": "沒有真實互動，就不做分數、預測、Pipeline 精準數字",
+      "reason": "Lead score、轉換率、營收預估都必須等留言、名單、買家回覆或成本資料出現。"
+    },
+    {
+      "label": "CTA 階梯",
+      "rule": "EP1 先追蹤留言，EP2 才導 LINE SOP，EP3 有產量價格後才測預購",
+      "reason": "太早導流會分散 EP1 的認知任務；太早收款會踩到交付風險。"
+    },
+    {
+      "label": "B2B 放行",
+      "rule": "G2 具名窗口 + G3 證據包齊，才可寄正式信",
+      "reason": "Carrefour 台灣、City'Super、Isetan 目前優先查證；Whole Foods / Oishii / Erewhon 先作 benchmark。"
+    }
+  ],
+  "today_tasks": [
+    {
+      "id": "2026-07-24_waitlist_form",
+      "title": "建立最簡單的等待名單入口：Google 表單或 LINE OA 一頁連結，準備承接 EP1 / EP2 流量",
+      "widget": "待回留言",
+      "owner": "Clement 決定入口，Codex 可整理欄位",
+      "estimated_minutes": 15,
+      "urgency": "high",
+      "done": false,
+      "sales_loss_if_not_done": "EP1 / EP2 發布後即使有人留言，也沒有承接名單的地方。"
+    },
+    {
+      "id": "2026-07-24_verify_carrefour",
+      "title": "查證 Carrefour 台灣官方 supplier / ESG / 生鮮採購聯絡路徑",
+      "widget": "買家 Gate",
+      "owner": "Codex",
+      "estimated_minutes": 30,
+      "urgency": "medium",
+      "done": false,
+      "sales_loss_if_not_done": "本季最可能轉實際會議的台灣通路會持續卡在 G0。"
+    },
+    {
+      "id": "2026-07-24_clement_three_numbers",
+      "title": "補三個數字：本季採收週數、每週可售盒數 range、單盒成本與冷鏈包材成本 range",
+      "widget": "證據包",
+      "owner": "Clement",
+      "estimated_minutes": 15,
+      "urgency": "high",
+      "done": false,
+      "sales_loss_if_not_done": "EP3 不能正式預購，B2B / 企業合作也不能報價。"
+    }
+  ],
+  "risk_alerts": [
+    {
+      "level": "high",
+      "title": "不能正式預購",
+      "text": "產季、週產量、單盒規格、成本與價格未補齊前，EP3 只能導等待名單，不可收款。"
+    },
+    {
+      "level": "medium",
+      "title": "B2B 不可寄正式信",
+      "text": "Carrefour 台灣、City'Super、Isetan Mitsukoshi 仍是 G0；沒有 G2 具名窗口與 G3 證據包前，不寄正式冷信。"
+    }
+  ],
+  "reply_queue": {
+    "count_label": "0",
+    "rows": [
+      {
+        "source": "EP1 留言",
+        "status": "尚未發布 / 尚無真實留言",
+        "evidence": "本機資料顯示 EP1 仍在製作與發布準備中。",
+        "next_action": "發布後把留言貼進此表，再分類疑慮、價格、購買意圖。"
+      },
+      {
+        "source": "等待名單",
+        "status": "入口未定",
+        "evidence": "目前未看到正式 Google 表單、LINE OA 或網站表單連結。",
+        "next_action": "先決定最簡單入口，不做複雜 CRM。"
+      }
+    ]
+  },
+  "buyer_pipeline": [
+    {
+      "buyer_id": "GSC-010",
+      "company": "Carrefour 台灣",
+      "market": "台灣",
+      "gate": "G0",
+      "priority": "本週查證",
+      "next_action": "查官方供應商、生鮮採購或 ESG 聯絡路徑。"
+    },
+    {
+      "buyer_id": "GSC-024",
+      "company": "City'Super",
+      "market": "香港 / 台灣",
+      "gate": "G0",
+      "priority": "本週查證",
+      "next_action": "查台灣 / 香港官網供應商洽談窗口。"
+    },
+    {
+      "buyer_id": "GSC-020",
+      "company": "Isetan Mitsukoshi",
+      "market": "日本",
+      "gate": "G0",
+      "priority": "需要 warm intro",
+      "next_action": "查 depachika 水果採購窗口；找不到具名窗口就先停在 G0。"
+    },
+    {
+      "buyer_id": "GSC-001",
+      "company": "Whole Foods Market",
+      "market": "美國",
+      "gate": "G0",
+      "priority": "Benchmark",
+      "next_action": "只作品牌與規格對標，不列為第一波冷信。"
+    },
+    {
+      "buyer_id": "GSC-002",
+      "company": "Oishii",
+      "market": "美國",
+      "gate": "G1",
+      "priority": "Benchmark",
+      "next_action": "只作科技農業品牌對標，不列為第一波冷信。"
+    },
+    {
+      "buyer_id": "GSC-003",
+      "company": "Erewhon Market",
+      "market": "美國",
+      "gate": "G1",
+      "priority": "Benchmark",
+      "next_action": "只作高端有機通路與社群語感對標。"
+    }
+  ],
+  "evidence_pack_status": [
+    {
+      "name": "產季量 / 週產量",
+      "status": "missing",
+      "status_label": "缺",
+      "why_it_matters": "決定能不能預購、報價與接企業或通路。",
+      "blocks": "正式預購、企業報價、B2B 寄信。"
+    },
+    {
+      "name": "單盒規格 / 等級",
+      "status": "pending",
+      "status_label": "待補",
+      "why_it_matters": "買家需要知道重量、顆數、尺寸、包裝與分級。",
+      "blocks": "報價、通路規格表。"
+    },
+    {
+      "name": "檢驗 / claim 證據",
+      "status": "missing",
+      "status_label": "缺",
+      "why_it_matters": "對外安全與驗證說法不能沒有證據。",
+      "blocks": "無毒、child-safe、驗證、專利等對外話術。"
+    },
+    {
+      "name": "冷鏈 SOP",
+      "status": "pending",
+      "status_label": "待補",
+      "why_it_matters": "草莓高價銷售要靠品質交付，冷鏈是買家 gate。",
+      "blocks": "通路、企業大單。"
+    },
+    {
+      "name": "價格 / 成本表",
+      "status": "missing",
+      "status_label": "缺",
+      "why_it_matters": "沒有成本就不能判斷毛利與可促銷空間。",
+      "blocks": "預購價格、企業報價。"
+    }
+  ],
+  "publish_queue": [
+    {
+      "item": "EP1 短影音",
+      "platform": "YouTube Shorts / IG Reels / TikTok / FB",
+      "status": "製作中",
+      "next_action": "確認最終影片檔、標題、描述、CTA。"
+    },
+    {
+      "item": "EP1 觀點短文",
+      "platform": "Threads / LinkedIn",
+      "status": "待改寫",
+      "next_action": "把影片內容改成短文，導向等待名單。"
+    }
+  ],
+  "content_calendar": [
+    {
+      "ep": "EP1",
+      "topic": "草莓為什麼突然死：種苗、土壤、水肥、陽光、溫度與病害機率",
+      "status": "製作中",
+      "cta": "加入等待名單",
+      "metric": "留言、私訊、等待名單數"
+    },
+    {
+      "ep": "EP2",
+      "topic": "乾淨草莓不是洗出來的",
+      "status": "待製作",
+      "cta": "領取種植知識卡",
+      "metric": "收藏、分享、LINE 加入"
+    },
+    {
+      "ep": "EP3",
+      "topic": "本季首批等待名單：先驗證市場是否願意下單",
+      "status": "待製作",
+      "cta": "等待名單；未補產量與價格前不收款",
+      "metric": "等待名單數"
+    },
+    {
+      "ep": "EP4",
+      "topic": "水肥光熱如何影響草莓健康",
+      "status": "待製作",
+      "cta": "留言想看的種植問題",
+      "metric": "留言問題數"
+    },
+    {
+      "ep": "EP5",
+      "topic": "採收不是摘下來，是品質管理",
+      "status": "待製作",
+      "cta": "企業 / 通路索取證據包",
+      "metric": "企業與買家詢問數"
+    }
+  ],
+  "price_benchmark": [
+    {
+      "source": "momo 宅配草莓",
+      "spec": "盒裝 / 宅配款",
+      "price": "約 NT$400-900 / 盒",
+      "note": "一般走量參考，不作 WeGrow 高端主對標。"
+    },
+    {
+      "source": "大湖直送大顆草莓",
+      "spec": "約 1kg",
+      "price": "約 NT$1,100-1,300 / 1kg",
+      "note": "目前較接近 WeGrow 可對標的台灣高端區間。"
+    },
+    {
+      "source": "日本あまおう贈答化粧箱",
+      "spec": "禮盒",
+      "price": "未查到，不編造",
+      "note": "需要下一輪查日本官方或可信商品頁。"
+    }
+  ],
+  "shangyi_review": {
+    "observe": "目前有今日作業、買家 G0/G1 表、EP1-EP5 內容排程與台灣價格 benchmark；但沒有真實留言、產量、成本與具名買家窗口。",
+    "interpret": "現在瓶頸不是缺更多卡片，而是缺可成交資料。沒有產量與成本，不能預購；沒有 G2 窗口與證據包，不能寄正式信。",
+    "act": "今日只做三件事：建立等待名單入口、查 Carrefour 台灣路徑、補產季量與成本 range。",
+    "ask_next": "請 Clement 補：採收週數、每週可售盒數、單盒成本、包材冷鏈成本、要用 Google 表單還是 LINE OA 承接名單。"
+  },
+  "adoption_farm": {
+    "compass": [
+      {
+        "label": "目的",
+        "rule": "把興趣變成可追蹤名單",
+        "reason": "農業黑客松不是先賣概念，而是先知道誰想體驗、誰能付費、誰需要企業方案。"
+      },
+      {
+        "label": "第一步",
+        "rule": "先收需求，不先報價",
+        "reason": "缺產季量、可開放格數、成本前，不給正式價格，只收等待名單與需求。"
+      },
+      {
+        "label": "客戶分流",
+        "rule": "家庭體驗、工程師學習、企業認養分開處理",
+        "reason": "三種 TA 的購買理由不同，不能用同一套話術成交。"
+      },
+      {
+        "label": "交付邊界",
+        "rule": "認養是參與與學習，不保證不存在的產量或驗證",
+        "reason": "合約與素材必須區分草莓驗證、瓜類驗證、活動體驗與農產品交付。"
+      },
+      {
+        "label": "成交 Gate",
+        "rule": "方案、價格、產量、冷鏈、活動規範齊了才收款",
+        "reason": "避免先賣出去，後面交付、退款、驗證 claim 卡住。"
+      }
+    ],
+    "segments": [
+      {
+        "segment": "親子家庭",
+        "need": "安全、乾淨、孩子看得懂 AI 農業、週末體驗。",
+        "entry": "等待名單、EP2 種植知識卡、農場體驗候補。",
+        "do_not_promise": "未確認產量與活動日期前，不承諾可採果或可收成數量。"
+      },
+      {
+        "segment": "工程師 / 科技家庭",
+        "need": "用一顆草莓理解 AI 農業、資料判斷、流程圖與實驗精神。",
+        "entry": "農業黑客松候補、線上課程 / 農場日體驗。",
+        "do_not_promise": "不把未接感測器或未驗證模型說成自動化完成。"
+      },
+      {
+        "segment": "企業福委 / ESG",
+        "need": "員工福利、家庭日、ESG 故事、可交付的禮盒或體驗。",
+        "entry": "企業認養需求表、15 分鐘方案確認。",
+        "do_not_promise": "沒有價格表、發票方式、冷鏈與合約條款前不正式報價。"
+      },
+      {
+        "segment": "通路 / 聯名 Pilot",
+        "need": "少量高辨識度產品、證據包、品牌故事與交付規格。",
+        "entry": "Evidence Pack review，不直接寄正式銷售信。",
+        "do_not_promise": "沒有 G2 具名窗口與 G3 證據包前不啟動正式 outreach。"
+      }
+    ],
+    "offer_ladder": [
+      {
+        "stage": "O0",
+        "offer": "等待名單",
+        "purpose": "確認誰真的有興趣、想要體驗還是想買草莓。",
+        "gate": "可立即建立；不收款。"
+      },
+      {
+        "stage": "O1",
+        "offer": "農業黑客松體驗日候補",
+        "purpose": "把內容觀眾轉成可邀約的實體體驗客戶。",
+        "gate": "需要活動日期、名額、入園規範。"
+      },
+      {
+        "stage": "O2",
+        "offer": "家庭 / 工程師認養格候補",
+        "purpose": "測試是否有人願意長期參與一格溫室的學習與觀察。",
+        "gate": "需要格數、價格、交付邊界、退款規則。"
+      },
+      {
+        "stage": "O3",
+        "offer": "企業認養方案",
+        "purpose": "承接福委、ESG、企業家庭日與送禮需求。",
+        "gate": "需要合約、價格表、發票、冷鏈、活動規範與 claim 白名單。"
+      }
+    ],
+    "qualifying_questions": [
+      {
+        "question": "你是想帶孩子體驗、學 AI 農業，還是想買草莓 / 禮盒？",
+        "judges": "家庭體驗、教育學習、B2C 購買或企業需求。",
+        "next_action": "分流到等待名單、內容追蹤、企業需求表。"
+      },
+      {
+        "question": "你希望參與一次活動，還是整季追蹤一格草莓？",
+        "judges": "單次體驗 vs 長期認養。",
+        "next_action": "單次進體驗候補；長期進認養候補。"
+      },
+      {
+        "question": "如果是企業，預計人數、月份、預算區間、是否需要發票？",
+        "judges": "是否能進企業認養方案討論。",
+        "next_action": "缺資料先收需求，不正式報價。"
+      },
+      {
+        "question": "是否需要食品安全、驗證、冷鏈或 ESG 文件？",
+        "judges": "證據包要求強度。",
+        "next_action": "需要文件者進 Evidence Gate，不用口頭承諾。"
+      }
+    ],
+    "evidence_gate": [
+      {
+        "item": "可開放格數 / 活動名額",
+        "status": "missing",
+        "status_label": "缺",
+        "blocks": "認養格、體驗日、企業活動正式收款。"
+      },
+      {
+        "item": "方案價格表",
+        "status": "missing",
+        "status_label": "缺",
+        "blocks": "家庭認養、企業認養、福委報價。"
+      },
+      {
+        "item": "活動入園規範",
+        "status": "pending",
+        "status_label": "待補",
+        "blocks": "親子體驗日與企業家庭日。"
+      },
+      {
+        "item": "冷鏈 / 交付 SOP",
+        "status": "pending",
+        "status_label": "待補",
+        "blocks": "草莓禮盒、企業配送、通路 Pilot。"
+      },
+      {
+        "item": "Claim 白名單",
+        "status": "missing",
+        "status_label": "缺",
+        "blocks": "無毒、驗證、ESG、專利、荷蘭驗證等對外話術。"
+      }
+    ],
+    "next_steps": [
+      "先新增一個等待名單入口，欄位只問：身分、需求、聯絡方式、想體驗時間、是否企業需求。",
+      "把 EP1 CTA 保持為留言與追蹤；EP2 才導 LINE / SOP；認養農場入口放在 EP3 或網站頁面。",
+      "Clement 補可開放格數、體驗日名額、是否能接企業家庭日、最低可承接人數。",
+      "Codex 下一步可把這個大 Tab 改成客戶填單頁，但要等 Gate 欄位補齊。"
+    ]
+  },
+  "v0_notes": [
+    "V0 是唯讀 dashboard，不接 Notion API、不自動發布、不寫入正式 CRM、不做登入權限。",
+    "缺資料就是缺，不用假分數、假 pipeline、假轉換率補滿畫面。",
+    "對外 claim 必須有證據檔；無毒、child-safe、荷蘭驗證、專利等字眼不能自行擴寫。",
+    "買家 Gate 依 buyer_contact_verification_table_v0_1.md；Carrefour 台灣、City'Super、Isetan 目前都不可直接寄正式信。",
+    "本機網址 http://127.0.0.1:8787/ 不等於已部署到 sales.wegrow-orbit.com。"
+  ]
+}
