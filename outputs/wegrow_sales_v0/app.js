@@ -1,5 +1,71 @@
 ﻿let dashboardData = null;
 const $ = (selector) => document.querySelector(selector);
+const SalesAIEngine = window.SalesAI || (function () {
+  const MEDDIC = [
+    ["metrics", "M", "Metrics", ["營收", "毛利", "客單", "坪效", "採購量", "盒", "金額", "預算", "KPI"]],
+    ["economicBuyer", "E", "Economic Buyer", ["老闆", "店長", "採購", "總經理", "決策", "核准", "買主"]],
+    ["decisionCriteria", "D", "Decision Criteria", ["價格", "包裝", "規格", "冷鏈", "檢驗", "品質", "產地", "交期", "物流"]],
+    ["decisionProcess", "D", "Decision Process", ["流程", "報價", "試吃", "樣品", "審核", "合約", "下單", "付款"]],
+    ["identifyPain", "I", "Identify Pain", ["痛點", "缺", "擔心", "風險", "退貨", "損耗", "不穩", "賣相", "保存"]],
+    ["champion", "C", "Champion", ["窗口", "支持", "幫忙", "推薦", "介紹", "champion", "內部"]]
+  ];
+  const normalize = (text) => String(text || "").replace(/\r\n/g, "\n").trim();
+  const hasAny = (text, words) => {
+    const lower = text.toLowerCase();
+    return words.some((word) => lower.includes(String(word).toLowerCase()));
+  };
+  const extractSentences = (text) => normalize(text).split(/[\n。；;.!?？]+/).map((item) => item.trim()).filter(Boolean).slice(0, 12);
+  const meddicFromText = (text) => MEDDIC.map(([key, letter, label, keywords]) => {
+    const hits = keywords.filter((word) => hasAny(text, [word]));
+    return {
+      key,
+      letter,
+      label,
+      status: hits.length ? "partial" : "missing",
+      text: hits.length ? `會議紀錄提到 ${hits.slice(0, 3).join("、")}，可先列為部分證據。` : `缺 ${label}：需要補具名資訊或量化條件。`
+    };
+  });
+  const detectIntent = (text) => {
+    if (hasAny(text, ["樣品", "試吃", "試賣", "寄樣"])) return "安排樣品 / 試吃後確認採購條件";
+    if (hasAny(text, ["報價", "價格", "預算"])) return "補齊規格與冷鏈後送初版報價";
+    if (hasAny(text, ["會議", "電話", "call", "拜訪"])) return "安排 15 分鐘 discovery call";
+    return "補一次快速確認：窗口、需求、規格、時間";
+  };
+  return {
+    analyzeMeeting({ customerName, note, now }) {
+      const text = normalize(note);
+      const name = normalize(customerName) || "未命名客戶";
+      const generatedAt = now || new Date().toISOString();
+      if (!text) {
+        return {
+          ok: false,
+          customerName: name,
+          generatedAt,
+          fitScore: 0,
+          summary: "尚未貼上會議紀錄。請先貼原始文字；不用先填完整 AI memory。",
+          meddic: meddicFromText(""),
+          nextBestAction: "貼上原始會議紀錄後重新分析",
+          dailyLearning: "沒有原始紀錄時不產生假摘要。",
+          gaps: MEDDIC.map((item) => item[2])
+        };
+      }
+      const meddic = meddicFromText(text);
+      const covered = meddic.filter((item) => item.status !== "missing").length;
+      const sentences = extractSentences(text);
+      return {
+        ok: true,
+        customerName: name,
+        generatedAt,
+        fitScore: Math.min(100, 35 + covered * 9 + Math.min(sentences.length, 6) * 2),
+        summary: `${name} 已有可分析的原始紀錄；先用文字抽取出 ${covered}/6 MEDDIC 線索。`,
+        meddic,
+        nextBestAction: detectIntent(text),
+        dailyLearning: sentences.length ? `今日學習：${sentences.slice(0, 3).join("；")}。` : "今日學習：紀錄太短，只能建立待補欄位。",
+        gaps: meddic.filter((item) => item.status === "missing").map((item) => item.label)
+      };
+    }
+  };
+})();
 function setupNav() {
   function activate(panelName) {
     document.querySelectorAll(".nav-item").forEach((nav) => nav.classList.remove("active"));
@@ -235,6 +301,77 @@ function renderLimits(data) {
   $("#limits-list").innerHTML = data.v0_notes.map((note) => `<p>${note}</p>`).join("");
 }
 
+function escapeHtml(value) {
+  return String(value || "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
+function renderAiHealthResult(result) {
+  const meddicRows = result.meddic.map((item) => `
+    <article class="meddic-card ${item.status}">
+      <span>${item.letter} · ${item.label}</span>
+      <p>${escapeHtml(item.text)}</p>
+    </article>
+  `).join("");
+  const gaps = result.gaps.length ? result.gaps.map((gap) => `<span class="gap-chip">${escapeHtml(gap)}</span>`).join("") : `<span class="gap-chip good">暫無重大缺口</span>`;
+
+  $("#ai-health-output").innerHTML = `
+    <div class="ai-result-head ${result.ok ? "ok" : "blocked"}">
+      <div>
+        <span>${result.ok ? "AI 可分析" : "待補紀錄"}</span>
+        <strong>${escapeHtml(result.customerName)}</strong>
+      </div>
+      <div class="fit-score">${result.fitScore}</div>
+    </div>
+    <section class="ai-result-section">
+      <h3>Daily Learning</h3>
+      <p>${escapeHtml(result.dailyLearning)}</p>
+    </section>
+    <section class="ai-result-section">
+      <h3>Next Best Action</h3>
+      <p>${escapeHtml(result.nextBestAction)}</p>
+    </section>
+    <section class="ai-result-section">
+      <h3>MEDDIC 健檢</h3>
+      <div class="meddic-grid">${meddicRows}</div>
+    </section>
+    <section class="ai-result-section">
+      <h3>待補欄位</h3>
+      <div class="gap-list">${gaps}</div>
+    </section>
+  `;
+}
+
+function setupAiHealth() {
+  const sample = [
+    "Mia Cbon 南紡店店長想先了解草莓禮盒試吃與冷鏈配送。",
+    "對方在意價格、包裝規格、檢驗資料與春節檔期。",
+    "採購流程需要先看樣品，再由採購核准是否試賣。",
+    "下一步安排一次 15 分鐘 discovery call，確認預算、採購量與可收貨時間。"
+  ].join("\n");
+  const noteInput = $("#ai-meeting-note");
+  const nameInput = $("#ai-customer-name");
+  if (noteInput && !noteInput.value.trim()) noteInput.value = sample;
+
+  function run() {
+    const result = SalesAIEngine.analyzeMeeting({
+      customerName: nameInput.value,
+      note: noteInput.value,
+      now: new Date().toISOString()
+    });
+    renderAiHealthResult(result);
+  }
+
+  const button = $("#run-ai-health");
+  if (button) button.addEventListener("click", run);
+  if (noteInput) noteInput.addEventListener("input", run);
+  run();
+}
+
 
 function renderAdoption(data) {
   const adoption = data.adoption_farm;
@@ -292,6 +429,7 @@ function renderDashboard(data) {
   renderShangyi(data);
   renderLimits(data);
   renderAdoption(data);
+  setupAiHealth();
 }
 
 fetch("sales_dashboard_data.json")

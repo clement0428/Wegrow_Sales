@@ -68,6 +68,7 @@
         <section class="panel active workbench-panel" id="panel-workbench">
           <nav class="subtab-bar" aria-label="銷售作戰台小分類">
             <button class="subtab active" data-subpanel="sales-today" type="button">今日作業</button>
+            <button class="subtab" data-subpanel="sales-ai-health" type="button">客戶 AI 健檢</button>
             <button class="subtab" data-subpanel="sales-content" type="button">內容發布</button>
             <button class="subtab" data-subpanel="sales-leads" type="button">留言名單</button>
             <button class="subtab" data-subpanel="sales-buyers" type="button">買家 Gate</button>
@@ -97,6 +98,25 @@
             <div class="task-list" id="task-list"></div>
             <h3>風險提醒</h3>
             <div class="risk-list" id="risk-list"></div>
+          </section>
+
+          <section class="subpanel-section" id="sales-ai-health">
+            <div class="panel-head">
+              <div>
+                <h2>客戶 AI 健檢</h2>
+                <p>會議紀錄只要有文字就先分析，缺欄位會變成待補清單，不再整片 Error。</p>
+              </div>
+              <button class="action-btn primary" id="run-ai-health" type="button">重新分析</button>
+            </div>
+            <div class="ai-health-layout">
+              <section class="ai-input-panel">
+                <label for="ai-customer-name">客戶名稱</label>
+                <input id="ai-customer-name" value="Mia Cbon 南紡店">
+                <label for="ai-meeting-note">會議紀錄 / 聯繫結果</label>
+                <textarea id="ai-meeting-note" rows="11"></textarea>
+              </section>
+              <section class="ai-output-panel" id="ai-health-output"></section>
+            </div>
           </section>
 
           <section class="subpanel-section" id="sales-content">
@@ -193,6 +213,6 @@
     </main>
   </div>
 
-  <script src="app.js?v=orbit-tabs-v1"></script>
+  <script src="app.js?v=ai-repair-v1"></script>
 </body>
 </html>
