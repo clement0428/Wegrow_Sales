@@ -401,7 +401,7 @@ const RISK_LABELS = {
   missing_cost: "缺成本",
   external_send: "對外動作",
 };
-const MISSING_FIELD_LABELS = { delivery_date: "交期", quantity: "數量", unit_cost: "單位成本" };
+const MISSING_FIELD_LABELS = { delivery_date: "交期", quantity: "數量", unit_cost: "單位成本", recipient_contact: "收件窗口" };
 
 function readJsonList(key) {
   try {
@@ -492,13 +492,13 @@ function buildMiaCbonNextPlan() {
   ].join("\n");
 }
 
-function createActionFromAgentMessage(message, agentMode) {
+function createActionFromAgentMessage(message, agentMode, companyOverride) {
   const text = String(message || "").trim();
   if (!text) return null;
   const type = detectActionType(text);
   if (!type) return null;
 
-  const company = detectCompanyName(text);
+  const company = companyOverride || detectCompanyName(text);
   const missingFields = (type === "update_customer_progress" || type === "quote") ? detectMissingFields(text) : [];
   const riskFlags = [];
   if (missingFields.includes("delivery_date")) riskFlags.push("missing_delivery_date");
@@ -787,6 +787,298 @@ function renderTimeline() {
   `).join("") : `<p class="note">尚無 timeline 事件。核准/拒絕 action 後會自動出現在這裡。</p>`;
 }
 
+// ── Customer query intent (status / brief / next action / missing data) ──
+// Root cause from Round 3 debug doc: localAgentReply() had no route for
+// direct customer questions, so it fell through to generic capability /
+// system-status text. Customer queries are answered entirely from local
+// data (buyer_pipeline + local action queue + local timeline + a clearly
+// marked seed profile) and never create an action or wait on the backend.
+const BUILD_MARKER = "sales-agent-r3-2026-08-28";
+
+const CUSTOMER_QUERY_PATTERNS = [
+  ["customer_missing_data", /缺資料|缺.*(欄位|資料)|missing.*(data|field)/i],
+  ["customer_next_action", /下一步|next[\s-]?action|next[\s-]?step/i],
+  ["customer_timeline", /timeline|時間軸|歷程/i],
+  ["customer_status", /狀態|狀況|status|situation/i],
+  ["customer_brief", /簡介|摘要|介紹|brief|summary/i],
+];
+
+const QUERY_TRIGGER_STRIP_RE = /(狀態|狀況|摘要|簡介|介紹|next[\s-]?action|next[\s-]?step|下一步|missing data|missing|缺資料|缺|timeline|時間軸|歷程|status brief|status|summary|brief|situation)/gi;
+const LENGTH_STRIP_RE = /\d+\s*(個)?字|\d+\s*(chinese\s*)?(characters?|words?)/gi;
+
+function normalizeCompanyName(name) {
+  return String(name || "").trim().toLowerCase().replace(/['’]/g, "");
+}
+
+function extractCandidateCompanyName(text) {
+  const known = detectCompanyName(text);
+  if (known) return known;
+  let candidate = text.replace(LENGTH_STRIP_RE, " ").replace(QUERY_TRIGGER_STRIP_RE, " ").replace(/[，,。.!?！？]/g, " ").trim();
+  candidate = candidate.replace(/\s+/g, " ").trim();
+  if (!candidate || candidate.length > 30) return null;
+  return candidate;
+}
+
+function detectCustomerQueryIntent(text) {
+  // A command (update/create/draft/quote/...) always wins — never
+  // reinterpret an actionable instruction as a read-only query.
+  if (detectActionType(text)) return null;
+  for (const [intent, pattern] of CUSTOMER_QUERY_PATTERNS) {
+    if (pattern.test(text)) {
+      const company = extractCandidateCompanyName(text);
+      if (company) return { intent, company };
+    }
+  }
+  return null;
+}
+
+function parseLengthRequest(text) {
+  const zh = text.match(/(\d+)\s*(個)?字/);
+  if (zh) return { unit: "zh_chars", count: parseInt(zh[1], 10) };
+  const zhViaEnglish = text.match(/(\d+)\s*chinese\s*characters?/i);
+  if (zhViaEnglish) return { unit: "zh_chars", count: parseInt(zhViaEnglish[1], 10) };
+  const words = text.match(/(\d+)\s*words?/i);
+  if (words) return { unit: "words", count: parseInt(words[1], 10) };
+  if (/簡短|brief|short/i.test(text)) return { unit: "zh_chars", count: 60 };
+  return null;
+}
+
+function formatBriefLength(text, lengthSpec) {
+  if (!lengthSpec) return text;
+  if (lengthSpec.unit === "zh_chars") {
+    const target = lengthSpec.count;
+    if (text.length > target * 1.2) return `${text.slice(0, Math.round(target * 1.1))}…`;
+    return text;
+  }
+  if (lengthSpec.unit === "words") {
+    const wordsArr = text.split(/\s+/);
+    if (wordsArr.length > lengthSpec.count * 1.2) return `${wordsArr.slice(0, Math.round(lengthSpec.count * 1.1)).join(" ")}…`;
+  }
+  return text;
+}
+
+// Local seed data, clearly marked needs_verification — never presented as if
+// it came from a real CRM/backend. Filled in from Clement's own chat notes
+// until sales_dashboard_data.json has real buyer_pipeline coverage.
+function getSeedCustomerProfiles() {
+  return {
+    "mia cbon": {
+      company: "Mia Cbon",
+      source: "local_seed_plus_agent_notes",
+      needs_verification: true,
+      stage: "樣品／包裝反饋階段",
+      latest_known_note: "Lin Yi-Chen 對目前包裝滿意，正在規劃下一次交貨。",
+      next_action: "確認交貨日期、品項、數量與收件窗口；交貨後建立 D+3 跟進。",
+      missing_fields: ["delivery_date", "quantity", "unit_cost", "recipient_contact"],
+      safety: "成本與供貨未確認前，不得正式報價。",
+    },
+  };
+}
+
+function getBuyerPipelineProfile(companyName) {
+  const norm = normalizeCompanyName(companyName);
+  const buyers = (dashboardData && dashboardData.buyer_pipeline) || [];
+  const hit = buyers.find((b) => {
+    const bn = normalizeCompanyName(b.company);
+    return bn && (bn.includes(norm) || norm.includes(bn));
+  });
+  if (!hit) return null;
+  return {
+    company: hit.company,
+    source: "buyer_pipeline",
+    needs_verification: false,
+    stage: hit.gate || "",
+    latest_known_note: hit.priority || "",
+    next_action: hit.next_action || "",
+    missing_fields: [],
+    safety: "",
+  };
+}
+
+function getCustomerActions(companyName) {
+  const norm = normalizeCompanyName(companyName);
+  return getActionQueue().filter((a) => {
+    const an = normalizeCompanyName((a.target && a.target.name) || "");
+    return an && (an.includes(norm) || norm.includes(an));
+  });
+}
+
+function getCustomerTimeline(companyName) {
+  const norm = normalizeCompanyName(companyName);
+  return getTimelineEvents().filter((e) => {
+    const en = normalizeCompanyName(e.entity || "");
+    return en && (en.includes(norm) || norm.includes(en));
+  });
+}
+
+function getCustomerProfile(companyName) {
+  if (!companyName) return null;
+  const norm = normalizeCompanyName(companyName);
+  const seedProfile = getSeedCustomerProfiles()[norm] || null;
+  const buyerProfile = getBuyerPipelineProfile(companyName);
+  if (!buyerProfile && !seedProfile) return null;
+
+  const base = buyerProfile || {
+    company: companyName, source: "unknown", needs_verification: true,
+    stage: "", latest_known_note: "", next_action: "", missing_fields: [], safety: "",
+  };
+  const merged = seedProfile ? {
+    ...base,
+    latest_known_note: base.latest_known_note || seedProfile.latest_known_note,
+    next_action: base.next_action || seedProfile.next_action,
+    missing_fields: seedProfile.missing_fields,
+    safety: seedProfile.safety,
+    needs_verification: true,
+    source: buyerProfile ? `${base.source}+local_seed` : seedProfile.source,
+    stage: base.stage || seedProfile.stage,
+  } : base;
+  merged.actions = getCustomerActions(merged.company);
+  merged.timeline = getCustomerTimeline(merged.company);
+  return merged;
+}
+
+function buildCustomerBrief(profile) {
+  const parts = [];
+  parts.push(`${profile.company}目前處於「${profile.stage || "階段未知"}」。`);
+  if (profile.latest_known_note) parts.push(`最新紀錄：${profile.latest_known_note}`);
+  if (profile.next_action) parts.push(`下一步：${profile.next_action}`);
+  if (profile.missing_fields && profile.missing_fields.length) {
+    parts.push(`缺：${profile.missing_fields.map((f) => MISSING_FIELD_LABELS[f] || f).join("、")}。`);
+  }
+  if (profile.safety) parts.push(profile.safety);
+  return parts.join(" ");
+}
+
+function buildCustomerBriefMarkdown(profile) {
+  return [
+    `# Customer Brief — ${profile.company}`,
+    "",
+    `Source: ${profile.source}${profile.needs_verification ? " (needs verification — not confirmed CRM data)" : ""}`,
+    `Stage: ${profile.stage || "unknown"}`,
+    `Latest note: ${profile.latest_known_note || "none"}`,
+    `Next action: ${profile.next_action || "none"}`,
+    `Missing: ${(profile.missing_fields || []).map((f) => MISSING_FIELD_LABELS[f] || f).join(", ") || "none"}`,
+    `Safety: ${profile.safety || "none"}`,
+    "",
+    `Related actions: ${(profile.actions || []).length}`,
+    `Related timeline events: ${(profile.timeline || []).length}`,
+  ].join("\n");
+}
+
+function customerBriefCardHtml(profile) {
+  const missingHtml = (profile.missing_fields || []).map((m) => `<span class="missing-chip">${escapeHtml(MISSING_FIELD_LABELS[m] || m)}</span>`).join("") || "—";
+  return `
+    <div class="customer-brief-card" data-company="${escapeHtml(profile.company)}">
+      <h4>${escapeHtml(profile.company)} <span class="source-chip">${profile.needs_verification ? "本機 seed，待驗證" : escapeHtml(profile.source)}</span></h4>
+      <div class="customer-brief-grid">
+        <div><span class="aac-label">階段</span>${escapeHtml(profile.stage || "—")}</div>
+        <div><span class="aac-label">最新紀錄</span>${escapeHtml(profile.latest_known_note || "—")}</div>
+        <div><span class="aac-label">下一步</span>${escapeHtml(profile.next_action || "—")}</div>
+        <div><span class="aac-label">缺資料</span>${missingHtml}</div>
+      </div>
+      ${profile.safety ? `<p class="note">${escapeHtml(profile.safety)}</p>` : ""}
+      <div class="customer-brief-actions">
+        <button data-cbact="update_progress">建立進度更新</button>
+        <button data-cbact="followup">建立 D+3 跟進</button>
+        <button data-cbact="export">匯出客戶簡報 MD</button>
+      </div>
+    </div>
+  `;
+}
+
+function customerNotFoundCardHtml(companyName) {
+  return `
+    <div class="customer-brief-card" data-company="${escapeHtml(companyName)}">
+      <h4>${escapeHtml(companyName)} <span class="source-chip missing">找不到</span></h4>
+      <p class="note">在 buyer_pipeline、本機 action queue 與 timeline 都找不到這個客戶，不會用系統整體狀態充當答案。</p>
+      <div class="customer-brief-actions">
+        <button data-cbact="create_draft">建立客戶檔案草稿</button>
+      </div>
+    </div>
+  `;
+}
+
+function appendCustomerMessage(content, cardHtml, companyName) {
+  const body = $("#agent-chat-body");
+  if (!body) return;
+  const item = document.createElement("article");
+  item.className = "agent-message assistant";
+  item.innerHTML = `
+    <div class="agent-message-role">商譯 Agent · customer_query</div>
+    <pre>${escapeHtml(content)}</pre>
+    ${cardHtml}
+  `;
+  body.appendChild(item);
+  const card = item.querySelector(".customer-brief-card");
+  card?.querySelectorAll("button[data-cbact]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const act = btn.dataset.cbact;
+      if (act === "update_progress") {
+        sendAgentMessage(`Update ${companyName} progress based on the latest known note.`);
+      } else if (act === "followup") {
+        const stub = { id: `manual_${Date.now()}`, target: { name: companyName }, title: `Follow-up — ${companyName}` };
+        addTodayTaskFromAction(stub, `D+3 follow-up — ${companyName}`);
+        createTimelineEventFromAction(stub, `D+3 follow-up created for ${companyName} (from customer brief)`);
+      } else if (act === "export") {
+        const profile = getCustomerProfile(companyName);
+        if (profile) openMdExportModal(buildCustomerBriefMarkdown(profile), `${companyName} brief`);
+      } else if (act === "create_draft") {
+        createActionFromAgentMessage(`Add customer ${companyName}`, "local_rule_engine", companyName);
+        renderActionQueue();
+      }
+    });
+  });
+  body.scrollTop = body.scrollHeight;
+}
+
+function buildCustomerQueryReply(queryIntent, text) {
+  const { intent, company } = queryIntent;
+  const profile = getCustomerProfile(company);
+  if (!profile) {
+    return {
+      responseMode: "customer_not_found",
+      answer: `在 buyer_pipeline、本機 action queue 與 timeline 都找不到「${company}」這個客戶，不會用系統整體狀態代替答案。可以先建立一筆客戶檔案草稿嗎？`,
+      company,
+    };
+  }
+  const lengthSpec = parseLengthRequest(text);
+  let answer;
+  if (intent === "customer_next_action") {
+    answer = [profile.next_action, profile.safety].filter(Boolean).join(" ") || "目前沒有記錄下一步。";
+  } else if (intent === "customer_missing_data") {
+    answer = (profile.missing_fields && profile.missing_fields.length)
+      ? profile.missing_fields.map((f) => MISSING_FIELD_LABELS[f] || f).join("、")
+      : "目前沒有標記缺資料。";
+  } else if (intent === "customer_timeline") {
+    answer = (profile.timeline && profile.timeline.length)
+      ? profile.timeline.map((e) => `${new Date(e.at).toLocaleDateString("zh-TW")} ${e.note}`).join("\n")
+      : "目前沒有 timeline 紀錄。";
+  } else {
+    answer = formatBriefLength(buildCustomerBrief(profile), lengthSpec);
+  }
+  return { responseMode: "customer_brief", answer, profile, company: profile.company };
+}
+
+function handleCustomerQueryMessage(text) {
+  const queryIntent = detectCustomerQueryIntent(text);
+  if (!queryIntent) return false;
+  const result = buildCustomerQueryReply(queryIntent, text);
+  const cardHtml = result.responseMode === "customer_not_found"
+    ? customerNotFoundCardHtml(result.company)
+    : customerBriefCardHtml(result.profile);
+  appendCustomerMessage(result.answer, cardHtml, result.company);
+  saveAgentLog({
+    id: `agent-${Date.now()}`,
+    at: new Date().toISOString(),
+    user_message: text,
+    agent_mode: "local_rule_engine",
+    requires_approval: false,
+    answer: result.answer,
+    response_mode: result.responseMode,
+  });
+  return true;
+}
+
 function getAgentLog() {
   try {
     return JSON.parse(localStorage.getItem("wegrow_sales_agent_log") || "[]");
@@ -991,6 +1283,12 @@ async function sendAgentMessage(message) {
   const text = String(message || "").trim();
   if (!text) return;
   appendAgentMessage("user", text);
+
+  // Direct customer questions (status/brief/next action/missing data/timeline)
+  // are answered entirely from local data — never wait on the backend, never
+  // fall back to generic system-status text, never create an action.
+  if (handleCustomerQueryMessage(text)) return;
+
   const pendingId = `agent-${Date.now()}`;
   appendAgentMessage("assistant", "處理中：讀取目前 Sales dashboard 狀態，判斷是否需要審核或交給 Codex。", pendingId);
   const result = await requestAgentReply(text);
@@ -1039,7 +1337,7 @@ function setupAgentChat() {
     });
   });
 
-  appendAgentMessage("assistant", "我已接上目前 Sales dashboard 狀態。現在可查今日任務、缺證據、買家 Gate，也能把你的指令轉成待審核 action 或 Codex 代辦包。");
+  appendAgentMessage("assistant", `我已接上目前 Sales dashboard 狀態（build ${BUILD_MARKER}）。可以直接問特定客戶狀況（例如「Mia Cbon 狀況介紹 100 字」）、查今日任務、缺證據、買家 Gate，也能把明確指令（例如「更新 Mia Cbon 進度」）轉成待審核 action。`);
 }
 
 

@@ -702,6 +702,41 @@ code { background: #f1efe8; border-radius: 4px; padding: 2px 4px; }
 .agent-action-card .aac-row { margin-bottom: 6px; }
 .agent-action-card .aac-label { color: var(--muted); display: block; font-size: 11px; font-weight: 800; margin-bottom: 2px; }
 
+/* ── Customer brief card (inside chat) ──────────────────────────────── */
+.customer-brief-card {
+  background: #faf9f5;
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--accent);
+  border-radius: 8px;
+  font-size: 12px;
+  margin-top: 8px;
+  padding: 10px;
+}
+.customer-brief-card h4 { align-items: center; display: flex; font-size: 13px; gap: 8px; margin: 0 0 8px; }
+.customer-brief-grid { display: grid; gap: 8px; grid-template-columns: repeat(2, minmax(0, 1fr)); margin-bottom: 6px; }
+.customer-brief-grid .aac-label { color: var(--muted); display: block; font-size: 11px; font-weight: 800; margin-bottom: 2px; }
+.customer-brief-actions { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+.customer-brief-actions button {
+  background: #fbfaf4;
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  cursor: pointer;
+  font-size: 11px;
+  font-weight: 800;
+  padding: 5px 8px;
+}
+.customer-brief-actions button:hover { background: var(--accent); border-color: var(--accent); }
+.source-chip {
+  background: #eee7f6;
+  border-radius: 999px;
+  color: #5c3d99;
+  font-size: 10px;
+  font-weight: 800;
+  padding: 2px 8px;
+  white-space: nowrap;
+}
+.source-chip.missing { background: #fff1ef; color: var(--red); }
+
 /* ── Markdown export modal ──────────────────────────────────────────── */
 .md-export-modal {
   align-items: center;
