@@ -74,6 +74,7 @@
             <button class="subtab" data-subpanel="sales-buyers" type="button">買家 Gate</button>
             <button class="subtab" data-subpanel="sales-evidence" type="button">證據包</button>
             <button class="subtab" data-subpanel="sales-shangyi" type="button">商譯覆盤</button>
+            <button class="subtab" data-subpanel="sales-actions" type="button">待審核 Actions</button>
             <button class="subtab" data-subpanel="sales-limits" type="button">系統限制</button>
           </nav>
 
@@ -151,6 +152,22 @@
             <table id="price-table"></table>
           </section>
 
+          <section class="subpanel-section" id="sales-actions">
+            <div class="panel-head">
+              <div>
+                <h2>待審核 Actions</h2>
+                <p>商譯 Agent 聊天窗建立的每一個 action 都會出現在這裡；核准/拒絕/匯出都在這張表操作，不會只留在聊天訊息裡。</p>
+              </div>
+              <button class="action-btn" id="action-queue-refresh" type="button">重新整理</button>
+            </div>
+            <div class="action-filter-row" id="action-filter-row" aria-label="狀態篩選"></div>
+            <div class="action-queue-wrap">
+              <table id="action-queue-table"></table>
+            </div>
+            <h3>Timeline</h3>
+            <div class="timeline-list" id="timeline-list"></div>
+          </section>
+
           <section class="subpanel-section" id="sales-limits">
             <h2>系統限制</h2>
             <div class="note-list" id="limits-list"></div>
@@ -213,6 +230,48 @@
     </main>
   </div>
 
-  <script src="app.js?v=ai-repair-v1"></script>
+  <section class="agent-chat-shell" id="agent-chat" aria-label="Sales AI 聊天機器人">
+    <button class="agent-chat-toggle" id="agent-chat-toggle" type="button">
+      <span>AI</span>
+      <strong>商譯 Agent</strong>
+    </button>
+    <div class="agent-chat-panel" id="agent-chat-panel">
+      <header class="agent-chat-head">
+        <div>
+          <strong>商譯 Agent</strong>
+          <span id="agent-mode">本機規則引擎 / 待接 Agent API</span>
+        </div>
+        <button id="agent-chat-close" type="button">×</button>
+      </header>
+      <div class="agent-chat-body" id="agent-chat-body"></div>
+      <div class="agent-quick-actions" aria-label="快捷指令">
+        <button type="button" data-agent-prompt="今天最該做哪三件銷售動作？">今日三件事</button>
+        <button type="button" data-agent-prompt="列出所有缺證據與會阻擋的銷售動作">缺證據</button>
+        <button type="button" data-agent-prompt="整理買家 Gate，告訴我誰可以推進、誰要暫停">買家 Gate</button>
+        <button type="button" data-agent-prompt="幫我產生給 Codex 的代辦包：把 Sales 變成可追溯 AI 系統">Codex 代辦</button>
+        <button type="button" data-agent-prompt="Add Mia Cbon progress update. Lin Yi-Chen is satisfied with the current packaging. Notify Mia Cbon about another delivery. Use the past visit context. Update progress and create the next plan.">Mia Cbon 進度更新（測試）</button>
+      </div>
+      <form class="agent-chat-input" id="agent-chat-form">
+        <textarea id="agent-chat-text" rows="2" placeholder="直接下指令，例如：幫我整理今天待辦、建立 Carrefour 跟進草稿、把缺證據列成待補清單"></textarea>
+        <button class="action-btn primary" type="submit">送出</button>
+      </form>
+    </div>
+  </section>
+
+  <section class="md-export-modal" id="md-export-modal" aria-label="匯出 Codex / Claude Markdown">
+    <div class="md-export-box">
+      <header>
+        <strong id="md-export-title">Export Codex MD</strong>
+        <button id="md-export-close" type="button">×</button>
+      </header>
+      <textarea id="md-export-text" rows="18" readonly></textarea>
+      <div class="md-export-actions">
+        <button class="action-btn primary" id="md-export-copy" type="button">複製 Copy for Claude</button>
+        <button class="action-btn" id="md-export-download" type="button">下載 .md</button>
+      </div>
+    </div>
+  </section>
+
+  <script src="app.js?v=sales-agent-chat-v2"></script>
 </body>
 </html>
