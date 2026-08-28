@@ -555,6 +555,18 @@ function updateActionStatus(id, status) {
   return queue[idx];
 }
 
+// Updates action metadata WITHOUT touching status — used by export/followup
+// tracking so those operations never disable approval (Bug B5/B6 fix).
+function patchActionFields(id, fields) {
+  const queue = getActionQueue();
+  const idx = queue.findIndex((a) => a.id === id);
+  if (idx === -1) return null;
+  Object.assign(queue[idx], fields, { updated_at: nowIso() });
+  saveActionQueue(queue);
+  renderActionQueue();
+  return queue[idx];
+}
+
 function createTimelineEventFromAction(action, note) {
   const events = getTimelineEvents();
   events.unshift({
@@ -574,7 +586,7 @@ function addTodayTaskFromAction(action, label) {
   const tasks = getLocalTodayTasks();
   const dueDate = new Date();
   dueDate.setDate(dueDate.getDate() + 3);
-  tasks.unshift({
+  const task = {
     id: `local_task_${action.id}_${Date.now()}`,
     title: label || `D+3 follow-up — ${(action.target && action.target.name) || action.title}`,
     widget: "本機新增（Action Queue）",
@@ -584,9 +596,11 @@ function addTodayTaskFromAction(action, label) {
     urgency: "medium",
     done: false,
     due_date: dueDate.toISOString().slice(0, 10),
-  });
+  };
+  tasks.unshift(task);
   saveLocalTodayTasks(tasks);
   if (dashboardData) renderTasks(dashboardData);
+  return task;
 }
 
 function approveAction(id) {
@@ -596,8 +610,8 @@ function approveAction(id) {
   const action = updateActionStatus(id, nextStatus);
   if (!action) return;
   createTimelineEventFromAction(action, `Approved: ${action.title} (status -> ${nextStatus})`);
-  if (action.type === "update_customer_progress" || action.type === "create_follow_up") {
-    addTodayTaskFromAction(action);
+  if (nextStatus === "approved" && (action.type === "update_customer_progress" || action.type === "create_follow_up")) {
+    createFollowUpFromAction(id);
   }
 }
 
@@ -610,8 +624,13 @@ function rejectAction(id) {
 function createFollowUpFromAction(id) {
   const action = getActionById(id);
   if (!action) return;
-  addTodayTaskFromAction(action, `D+3 follow-up — ${(action.target && action.target.name) || action.title}`);
+  // Approval-safe: only create the D+3 task once an action is approved.
+  if (action.status !== "approved") return;
+  // De-duplicated: a follow-up task is created exactly once per action.
+  if (action.followup_task_id) return;
+  const task = addTodayTaskFromAction(action, `D+3 follow-up — ${(action.target && action.target.name) || action.title}`);
   createTimelineEventFromAction(action, `D+3 follow-up created for ${(action.target && action.target.name) || action.title}`);
+  patchActionFields(id, { followup_task_id: (task && task.id) || `local_task_${id}_${Date.now()}` });
 }
 
 function buildActionMarkdown(action) {
@@ -652,9 +671,13 @@ function exportActionToMarkdown(id, mode) {
   const action = getActionById(id);
   if (!action) return;
   const md = buildActionMarkdown(action);
-  if (action.status === "pending_approval" || action.status === "blocked_missing_data") {
-    updateActionStatus(id, "exported_to_codex");
-  }
+  // Export is metadata-only — it must never change action.status, otherwise
+  // exporting a still-pending action would silently disable approval (Bug B5).
+  patchActionFields(id, {
+    export_count: (action.export_count || 0) + 1,
+    exported_at: nowIso(),
+    last_export_mode: mode || "download",
+  });
   openMdExportModal(md, action.title);
   if (mode === "copy") copyMdToClipboard(md);
 }
@@ -738,6 +761,9 @@ function renderActionQueue() {
     const missingHtml = (a.missing_fields || []).map((m) => `<span class="missing-chip">${escapeHtml(MISSING_FIELD_LABELS[m] || m)}</span>`).join("");
     const canApprove = a.status === "pending_approval";
     const canReject = a.status === "pending_approval" || a.status === "blocked_missing_data";
+    const canFollowup = a.status === "approved" && !a.followup_task_id;
+    const followupLabel = a.followup_task_id ? "D+3 已建立" : "建立D+3";
+    const exportLabel = a.export_count ? `匯出MD (${a.export_count})` : "匯出MD";
     return `
       <tr data-action-id="${a.id}">
         <td>${new Date(a.created_at).toLocaleString("zh-TW", { hour12: false })}</td>
@@ -750,8 +776,8 @@ function renderActionQueue() {
         <td class="action-row-buttons">
           <button data-act="approve" ${canApprove ? "" : "disabled"}>核准</button>
           <button data-act="reject" ${canReject ? "" : "disabled"}>拒絕</button>
-          <button data-act="followup">建立D+3</button>
-          <button data-act="export">匯出MD</button>
+          <button data-act="followup" ${canFollowup ? "" : "disabled"}>${followupLabel}</button>
+          <button data-act="export">${exportLabel}</button>
           <button data-act="copy">複製</button>
         </td>
       </tr>`;
@@ -1233,7 +1259,7 @@ function appendAgentMessage(role, content, meta = "", action = null) {
         <div class="action-row-buttons" data-chat-action="${action.id}">
           <button data-act="approve" ${action.status === "pending_approval" ? "" : "disabled"}>核准 Approve</button>
           <button data-act="reject" ${(action.status === "pending_approval" || action.status === "blocked_missing_data") ? "" : "disabled"}>拒絕 Reject</button>
-          <button data-act="followup">建立D+3 Follow-up</button>
+          <button data-act="followup" ${(action.status === "approved" && !action.followup_task_id) ? "" : "disabled"}>${action.followup_task_id ? "D+3 已建立" : "建立D+3 Follow-up"}</button>
           <button data-act="export">匯出 Codex MD</button>
           <button data-act="copy">複製 Copy for Claude</button>
           <button data-act="cancel">取消 Cancel</button>
@@ -1275,8 +1301,13 @@ function refreshInlineActionCard(card, id) {
   }
   const approveBtn = card.querySelector('[data-act="approve"]');
   const rejectBtn = card.querySelector('[data-act="reject"]');
+  const followupBtn = card.querySelector('[data-act="followup"]');
   if (approveBtn) approveBtn.disabled = action.status !== "pending_approval";
   if (rejectBtn) rejectBtn.disabled = !(action.status === "pending_approval" || action.status === "blocked_missing_data");
+  if (followupBtn) {
+    followupBtn.disabled = !(action.status === "approved" && !action.followup_task_id);
+    followupBtn.textContent = action.followup_task_id ? "D+3 已建立" : "建立D+3 Follow-up";
+  }
 }
 
 async function sendAgentMessage(message) {
