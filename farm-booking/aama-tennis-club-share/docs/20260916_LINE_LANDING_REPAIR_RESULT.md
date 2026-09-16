@@ -2,6 +2,12 @@
 
 日期：2026-09-16
 
+Git：`clement0428/Wegrow_Sales` / `master`
+
+實作 commit：[`0cd5808`](https://github.com/clement0428/Wegrow_Sales/commit/0cd5808742aa3e9f6a98fb2b472934b1b62f0784)
+
+Pages 發布修正 commit：[`2cef6d4`](https://github.com/clement0428/Wegrow_Sales/commit/2cef6d4af1ba3a04d28eff63458d10ab57f242aa)
+
 ## 結論
 
 已完成可操作的本機審查版本，但未發布到 WeGrow 官方 LINE，也未宣稱正式金流、LIFF、提醒或 Sales 同步完成。正式發布仍需 Clement 核准預覽與提供外部服務設定。
@@ -15,7 +21,7 @@
 - 交通與須知：`/visit-info`
 - 聯絡農場：`/contact`
 - 當季果物：https://wegrow.oen.tw/
-- HTTPS 驗收站：`https://wegrow-orbit.com/Wegrow_Sales/outputs/line-farm-booking-qa/`（推送後由既有 GitHub Pages 發布）
+- HTTPS 驗收站：https://wegrow-orbit.com/Wegrow_Sales/outputs/line-farm-booking-qa/
 - 正式預約後端網址：尚未部署；驗收站不收款、不占正式名額
 
 ## 本輪實作
@@ -47,6 +53,9 @@
 - Production-mode E2E：7 組 PASS。
 - E2E 結果：`qa/e2e-result.json`
 - 手機截圖：`qa/farm-mobile-home.png`、`qa/farm-mobile-payment-blocked.png`
+- HTTPS 手機截圖：`qa/https-review-mobile.png`
+- GitHub Pages deployment：[run 35076190378](https://github.com/clement0428/Wegrow_Sales/actions/runs/35076190378)，PASS。
+- 公開網址檢查：HTTP 200；390px Chromium 完整互動 PASS。
 
 ## E01-E16 驗收狀態
 
@@ -54,7 +63,7 @@
 |---|---|---|
 |E01|BLOCKED|尚無核准的公開 HTTPS 網址，未改正式 LINE 首頁。|
 |E02|BLOCKED|未獲授權修改 LINE 圖文選單，亦未核對 API／per-user 覆蓋。|
-|E03|VERIFIED|匿名本機預覽可用，顧客頁不顯示 CRM 或管理入口。|
+|E03|VERIFIED|匿名 HTTPS 驗收站可用，顧客頁不顯示 CRM、管理入口或他人訂單。|
 |E04|BLOCKED|缺正式 LIFF ID、LINE Login channel 與 HTTPS callback。|
 |E05|VERIFIED|`tests/farm/capacity.test.ts` 與 `booking-operations.test.ts` 覆蓋 1 團 50、2 團 30、3 團 15，以及新增團體使上限下降的情況。|
 |E06|PARTIAL|原子帳本模擬兩筆同時搶位，只允許一筆成功；正式 D1 transaction 與供應商防重扣仍待驗收。|
@@ -64,10 +73,10 @@
 |E10|PARTIAL|前一天 18:00 Asia/Taipei、改期版本去重與未確認不排提醒已有測試；真實 LINE 發送未配置。|
 |E11|BLOCKED|折抵試算已完成，持久核銷、撤銷與財務對帳尚未實作。|
 |E12|PARTIAL|模擬事件有穩定 eventId 且取消建立新版本；缺 Sales production ingest／login，尚未做真實重播驗收。|
-|E13|VERIFIED|360–1024px E2E 通過，無橫向溢出與主要操作遮擋。|
-|E14|PARTIAL|正式建置匿名本機驗證通過；公開網址尚未部署。|
+|E13|VERIFIED|360–1024px Next E2E 通過；390px 公開 HTTPS E2E 通過，無橫向溢出與主要操作遮擋。|
+|E14|VERIFIED|公開 HTTPS 驗收站匿名可用；管理入口未暴露。正式後端仍與驗收站清楚分開。|
 |E15|VERIFIED|所有日期均標示 preview seed，金流未配置不顯示付款成功。|
-|E16|BLOCKED|尚未公開部署，無正式選單版本與 rollback 證據。|
+|E16|PARTIAL|Pages commit、deployment run 與前一版本可追溯／回復；正式 LINE 選單未切換，因此選單 rollback 待驗收。|
 
 ## 外部阻擋
 

@@ -1,0 +1,9 @@
+{
+  "url": "https://wegrow-orbit.com/Wegrow_Sales/outputs/line-farm-booking-qa/",
+  "status": 200,
+  "viewport": "390x844",
+  "result": "HTTPS review station mobile flow PASS",
+  "checkedAt": "2026-09-16T08:53:51.1395010Z",
+  "deploymentRun": "https://github.com/clement0428/Wegrow_Sales/actions/runs/35076190378",
+  "deploymentCommit": "2cef6d4af1ba3a04d28eff63458d10ab57f242aa"
+}
