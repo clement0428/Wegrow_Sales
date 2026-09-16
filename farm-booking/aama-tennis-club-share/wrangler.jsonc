@@ -1,6 +1,6 @@
 {
   "$schema": "node_modules/wrangler/config-schema.json",
-  "name": "aama-tennis-club-dev",
+  "name": "wegrow-farm-booking-preview",
   "main": ".open-next/worker.js",
   "compatibility_date": "2026-09-01",
   "compatibility_flags": ["nodejs_compat", "global_fetch_strictly_public"],
@@ -11,8 +11,8 @@
   "d1_databases": [
     {
       "binding": "DB",
-      "database_name": "tennis-club-dev",
-      "database_id": "<D1_DEV_DATABASE_ID>",
+      "database_name": "wegrow-farm-booking-prod",
+      "database_id": "4f40a0e0-e5bb-4de0-93ad-91ad3b32dfc7",
       "migrations_dir": "d1/migrations"
     }
   ],
@@ -22,20 +22,20 @@
   },
   "env": {
     "production": {
-      "name": "aama-tennis-club",
+      "name": "wegrow-farm-booking",
       "workers_dev": true,
       "preview_urls": false,
       "observability": { "enabled": true, "head_sampling_rate": 1 },
       "d1_databases": [
         {
           "binding": "DB",
-          "database_name": "tennis-club-prod",
-          "database_id": "<D1_PROD_DATABASE_ID>",
+          "database_name": "wegrow-farm-booking-prod",
+          "database_id": "4f40a0e0-e5bb-4de0-93ad-91ad3b32dfc7",
           "migrations_dir": "d1/migrations"
         }
       ],
       "vars": {
-        "NEXT_PUBLIC_LIFF_ID": "<LIFF_ID>"
+        "NEXT_PUBLIC_LIFF_ID": ""
       }
     }
   }

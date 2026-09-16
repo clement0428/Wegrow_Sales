@@ -1,7 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 
 const PUBLIC_PREFIXES = [
-  "/login", "/api/auth", "/api/farm/availability", "/api/farm/checkout",
+  "/login", "/api/auth", "/api/farm/availability", "/api/farm/bookings", "/api/farm/checkout",
   "/api/bookings", "/_next", "/brand", "/favicon",
 ];
 

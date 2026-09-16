@@ -1,13 +1,13 @@
 {
-  "baseURL": "http://localhost:3218",
+  "baseURL": "https://wegrow-farm-booking.clement0428.workers.dev",
   "results": [
-    "mobile booking flow PASS",
+    "mobile create and lookup booking flow PASS",
     "desktop layout and production admin access boundary PASS",
     "360px through 1024px responsive layout PASS",
     "stable LINE entry routes PASS",
-    "availability API PASS",
+    "D1 availability API PASS",
     "payment safety boundary PASS",
     "ICS PASS"
   ],
-  "completedAt": "2026-09-16T08:49:06.699Z"
+  "completedAt": "2026-09-16T13:58:42.954Z"
 }

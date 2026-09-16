@@ -1,13 +1,12 @@
 "use client";
 
 import Image from "next/image";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   ArrowLeft, ArrowRight, CalendarDays, CalendarPlus, Check, ChevronRight, Clock3,
   CreditCard, ExternalLink, Info, LoaderCircle, MapPin, MessageCircle, Minus, Plus,
   ReceiptText, RefreshCw, ShieldCheck, ShoppingBasket, Sprout, Ticket, Users,
 } from "lucide-react";
-import type { PaymentMethod } from "@/lib/farm/payments";
 import {
   calculateVisitPrice,
   MEAL_PRICE_TWD,
@@ -40,7 +39,22 @@ type CheckoutState =
   | { status: "idle" }
   | { status: "loading" }
   | { status: "blocked"; message: string }
-  | { status: "ready"; url: string };
+  | { status: "reserved"; bookingNumber: string; lookupCode: string; message: string };
+
+type BookingRecord = {
+  bookingNumber: string;
+  lookupCode: string;
+  contactName: string;
+  totalPeople: number;
+  plantCount: number;
+  mealCount: number;
+  amountTwd: number;
+  bookingStatus: string;
+  paymentStatus: string;
+  startsAt: string;
+  endsAt: string;
+  experience: string;
+};
 
 const weekday = new Intl.DateTimeFormat("zh-TW", { weekday: "short", timeZone: "Asia/Taipei" });
 const monthDay = new Intl.DateTimeFormat("zh-TW", { month: "numeric", day: "numeric", timeZone: "Asia/Taipei" });
@@ -61,13 +75,13 @@ export default function FarmBookingApp({ initialView = "booking" }: { initialVie
   const [availability, setAvailability] = useState<"loading" | "ready" | "error">("loading");
   const [availabilityMessage, setAvailabilityMessage] = useState("");
   const [previewMode, setPreviewMode] = useState(true);
-  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>("line_pay");
   const [contactName, setContactName] = useState("");
   const [phone, setPhone] = useState("");
   const [groupName, setGroupName] = useState("");
   const [note, setNote] = useState("");
   const [consented, setConsented] = useState(false);
   const [checkout, setCheckout] = useState<CheckoutState>({ status: "idle" });
+  const idempotencyKey = useRef("");
   const people = adult + child + infant;
 
   useEffect(() => {
@@ -123,30 +137,41 @@ export default function FarmBookingApp({ initialView = "booking" }: { initialVie
     window.scrollTo({ top: 0, behavior: "smooth" });
   }
 
-  async function startCheckout() {
+  async function submitBooking() {
     if (!selectedSlot) return;
+    if (!idempotencyKey.current) idempotencyKey.current = crypto.randomUUID();
     setCheckout({ status: "loading" });
-    const idempotency = crypto.randomUUID();
     try {
-      const response = await fetch("/api/farm/checkout", {
+      const response = await fetch("/api/farm/bookings", {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
-          bookingId: `PREVIEW-${selectedSlot.id}`,
-          attemptId: idempotency,
-          amount: price.totalTwd,
-          method: paymentMethod,
-          contact: { contactName, phone, groupName, note },
+          slotId: selectedSlot.id,
+          adultCount: adult,
+          childCount: child,
+          infantCount: infant,
+          plantCount,
+          mealCount,
+          contactName,
+          phone: phone.replace(/\D/g, ""),
+          groupName,
+          note,
+          idempotencyKey: idempotencyKey.current,
         }),
       });
-      const result = await response.json() as { checkoutUrl?: string; error?: string };
-      if (!response.ok || !result.checkoutUrl) {
-        setCheckout({ status: "blocked", message: result.error || "付款服務目前尚未開放" });
+      const result = await response.json() as { booking?: BookingRecord; error?: string; message?: string };
+      if (!response.ok || !result.booking) {
+        setCheckout({ status: "blocked", message: result.error || "無法建立預約，請重新確認場次。" });
         return;
       }
-      setCheckout({ status: "ready", url: result.checkoutUrl });
+      setCheckout({
+        status: "reserved",
+        bookingNumber: result.booking.bookingNumber,
+        lookupCode: result.booking.lookupCode,
+        message: result.message || "已收到預約申請。",
+      });
     } catch {
-      setCheckout({ status: "blocked", message: "無法連接付款服務，請稍後再試。" });
+      setCheckout({ status: "blocked", message: "無法連接預約服務，請稍後再試。" });
     }
   }
 
@@ -172,7 +197,8 @@ export default function FarmBookingApp({ initialView = "booking" }: { initialVie
             </div>
           </section>
 
-          {previewMode && <div className="preview-notice"><Info /><span><strong>核准前預覽</strong> 開放日與價格為本次審查資料，尚未啟用正式收款。</span></div>}
+          {previewMode && <div className="preview-notice"><Info /><span><strong>系統預覽</strong> 場次尚未由正式資料庫發布。</span></div>}
+          {!previewMode && <div className="preview-notice"><Info /><span><strong>場次已連接農場資料庫</strong> 價格仍為待核定參考，付款尚未開放。</span></div>}
 
           <nav className="stepper" aria-label="預約進度">
             {["方案", "時段", "資料", "確認"].map((label, index) => {
@@ -258,10 +284,10 @@ export default function FarmBookingApp({ initialView = "booking" }: { initialVie
                   <label className="full">團體名稱（選填）<input value={groupName} onChange={(event) => setGroupName(event.target.value)} placeholder="家庭、公司或社團名稱" /></label>
                   <label className="full">備註<textarea value={note} onChange={(event) => setNote(event.target.value)} placeholder="行動協助、孩童或其他需要農場先知道的事" /></label>
                 </div>
-                <h3 className="field-title">付款方式</h3>
+                <h3 className="field-title">付款方式（尚未開放）</h3>
                 <div className="payment-options">
-                  <button type="button" className={paymentMethod === "line_pay" ? "payment selected" : "payment"} onClick={() => setPaymentMethod("line_pay")}><MessageCircle /> LINE Pay <small>正式商家憑證尚未配置</small></button>
-                  <button type="button" className={paymentMethod === "credit_card" ? "payment selected" : "payment"} onClick={() => setPaymentMethod("credit_card")}><CreditCard /> 信用卡 <small>收單商與憑證尚未配置</small></button>
+                  <button type="button" className="payment" disabled><MessageCircle /> LINE Pay <small>尚未開放付款</small></button>
+                  <button type="button" className="payment" disabled><CreditCard /> 信用卡 <small>尚未開放付款</small></button>
                 </div>
                 <label className="consent"><input checked={consented} onChange={(event) => setConsented(event.target.checked)} type="checkbox" /> <span>我已閱讀折抵、取消、退費與雨天政策；正式發布前仍須由農場核准完整條款。</span></label>
                 <button className="primary-button" disabled={!contactName.trim() || !validPhone || !consented} onClick={() => setStep(4)}>檢查預約內容 <ArrowRight /></button>
@@ -277,20 +303,20 @@ export default function FarmBookingApp({ initialView = "booking" }: { initialVie
                   <ReviewRow icon={<Clock3 />} label="時段" value={`${timeOnly.format(new Date(selectedSlot.startsAt))}–${timeOnly.format(new Date(selectedSlot.endsAt))}`} />
                   <ReviewRow icon={<Users />} label="人數" value={`${people} 位（成人 ${adult}、兒童 ${child}、幼兒 ${infant}）`} />
                   <ReviewRow icon={<ShoppingBasket />} label="加選" value={`盆栽 ${plantCount}、餐飲 ${mealCount}`} />
-                  <ReviewRow icon={<CreditCard />} label="付款" value={paymentMethod === "line_pay" ? "LINE Pay" : "信用卡"} />
+                  <ReviewRow icon={<CreditCard />} label="付款" value="尚未開放付款" />
                 </div>
-                <div className="price-box"><span>門票折抵後合計</span><strong>NT$ {price.totalTwd.toLocaleString()}</strong><small>門票 NT$ {price.ticketSubtotalTwd.toLocaleString()}；已折抵 NT$ {price.creditAppliedTwd.toLocaleString()}。送出付款時仍由伺服器重新核對價格與名額。</small></div>
-                {checkout.status === "idle" && <button className="primary-button" onClick={startCheckout}>前往付款 <ArrowRight /></button>}
-                {checkout.status === "loading" && <button className="primary-button" disabled><LoaderCircle /> 正在建立安全付款…</button>}
-                {checkout.status === "blocked" && <div className="blocked-result"><ShieldCheck /><div><strong>尚未啟用正式收款</strong><p>{checkout.message}</p><span>沒有扣款，也沒有建立正式預約。完成 LINE Pay／信用卡 sandbox 驗收後才能公開。</span></div></div>}
-                {checkout.status === "ready" && <a className="primary-button" href={checkout.url}>進入安全付款 <ArrowRight /></a>}
+                <div className="price-box"><span>待核定參考金額</span><strong>NT$ {price.totalTwd.toLocaleString()}</strong><small>門票 NT$ {price.ticketSubtotalTwd.toLocaleString()}；折抵試算 NT$ {price.creditAppliedTwd.toLocaleString()}。這不是正式報價，農場確認前可能調整。</small></div>
+                {checkout.status === "idle" && <button className="primary-button" onClick={submitBooking}>送出預約申請 <ArrowRight /></button>}
+                {checkout.status === "loading" && <button className="primary-button" disabled><LoaderCircle /> 正在保留名額…</button>}
+                {checkout.status === "blocked" && <div className="blocked-result"><ShieldCheck /><div><strong>這次沒有建立預約</strong><p>{checkout.message}</p><span>沒有扣款。請回到時段重新選擇，或聯繫農場。</span></div></div>}
+                {checkout.status === "reserved" && <div className="blocked-result success-result"><Check /><div><strong>{checkout.message}</strong><p>預約編號：{checkout.bookingNumber}</p><span>查詢碼：<b>{checkout.lookupCode}</b>。請和手機號碼一起保存；目前沒有扣款。</span></div></div>}
               </>
             )}
           </section>
         </>
       )}
 
-      {view === "mine" && <SimpleView icon={<ReceiptText />} title="我的預約" intro="LINE 登入後，這裡會顯示本人已付款、待確認、改期與取消中的預約。"><div className="view-empty"><ReceiptText /><strong>尚未連接正式 LINE 登入</strong><span>目前不接受以訂單編號猜測或載入他人資料。LIFF 設定完成後才會顯示本人預約。</span><button onClick={() => changeView("booking")} className="primary-button">返回預約</button></div></SimpleView>}
+      {view === "mine" && <MyBookingsView onBack={() => changeView("booking")} />}
       {view === "info" && <SimpleView icon={<Info />} title="交通與注意事項" intro="地址與預約制服務時間須由農場核准後才會公開。"><div className="info-list"><InfoRow icon={<MapPin />} title="集合地點" text="正式地址與導航連結尚待農場確認，不顯示推測位置。" /><InfoRow icon={<Sprout />} title="參訪準備" text="建議準備帽子、防曬用品、飲用水，並穿方便行走的包覆性鞋款。" /><InfoRow icon={<CalendarDays />} title="雨天安排" text="將依核准後的場次政策通知，不會自行假設照常或取消。" /></div></SimpleView>}
       {view === "contact" && <SimpleView icon={<MessageCircle />} title="聯繫農場" intro="人數較多、沒有合適場次，或有特殊需求，可直接聯繫官方 LINE。"><a className="line-contact" href="https://line.me/R/ti/p/@647hlrhw" target="_blank" rel="noreferrer"><MessageCircle /><span><strong>開啟 WeGrow 官方 LINE</strong><small>@647hlrhw</small></span><ExternalLink /></a><a className="shop-link" href="https://wegrow.oen.tw/" target="_blank" rel="noreferrer">訂購當季鮮果 <ExternalLink /></a></SimpleView>}
 
@@ -312,3 +338,53 @@ function NavButton({ active, icon, label, onClick }: { active: boolean; icon: Re
 function SimpleView({ icon, title, intro, children }: { icon: React.ReactNode; title: string; intro: string; children: React.ReactNode }) { return <section className="simple-view"><div className="simple-heading"><span>{icon}</span><div><h1>{title}</h1><p>{intro}</p></div></div>{children}</section>; }
 function InfoRow({ icon, title, text }: { icon: React.ReactNode; title: string; text: string }) { return <div className="info-row"><span>{icon}</span><div><strong>{title}</strong><p>{text}</p></div></div>; }
 function PriceLine({ label, value, highlight = false }: { label: string; value: number; highlight?: boolean }) { return <div className={highlight ? "price-line highlight" : "price-line"}><span>{label}</span><strong>{value < 0 ? "−" : ""}NT$ {Math.abs(value).toLocaleString()}</strong></div>; }
+
+function MyBookingsView({ onBack }: { onBack: () => void }) {
+  const [phone, setPhone] = useState("");
+  const [code, setCode] = useState("");
+  const [status, setStatus] = useState<"idle" | "loading" | "error" | "ready">("idle");
+  const [message, setMessage] = useState("");
+  const [booking, setBooking] = useState<BookingRecord | null>(null);
+
+  async function lookup() {
+    setStatus("loading");
+    setBooking(null);
+    const query = new URLSearchParams({ phone: phone.replace(/\D/g, ""), code: code.trim() });
+    try {
+      const response = await fetch(`/api/farm/bookings?${query}`);
+      const result = await response.json() as { booking?: BookingRecord; error?: string };
+      if (!response.ok || !result.booking) {
+        setMessage(result.error || "找不到符合的預約");
+        setStatus("error");
+        return;
+      }
+      setBooking(result.booking);
+      setStatus("ready");
+    } catch {
+      setMessage("無法連接預約服務，請稍後再試。");
+      setStatus("error");
+    }
+  }
+
+  return <SimpleView icon={<ReceiptText />} title="我的預約" intro="用預約時填寫的手機號碼與 8 碼查詢碼查看進度。">
+    <div className="booking-panel lookup-panel">
+      <div className="form-grid">
+        <label>手機號碼<input value={phone} onChange={(event) => setPhone(event.target.value)} inputMode="tel" placeholder="0912 345 678" /></label>
+        <label>8 碼查詢碼<input value={code} onChange={(event) => setCode(event.target.value.toUpperCase())} maxLength={8} placeholder="例：A1B2C3D4" /></label>
+      </div>
+      <button className="primary-button" disabled={!/^09\d{8}$/.test(phone.replace(/\D/g, "")) || code.trim().length !== 8 || status === "loading"} onClick={lookup}>
+        {status === "loading" ? <><LoaderCircle /> 查詢中…</> : <>查詢預約 <ArrowRight /></>}
+      </button>
+      {status === "error" && <div className="blocked-result"><Info /><div><strong>查詢不到</strong><p>{message}</p></div></div>}
+      {status === "ready" && booking && <div className="review-block lookup-result">
+        <ReviewRow icon={<ReceiptText />} label="預約編號" value={booking.bookingNumber} />
+        <ReviewRow icon={<CalendarDays />} label="日期" value={fullDate.format(new Date(booking.startsAt))} />
+        <ReviewRow icon={<Clock3 />} label="時間" value={`${timeOnly.format(new Date(booking.startsAt))}–${timeOnly.format(new Date(booking.endsAt))}`} />
+        <ReviewRow icon={<Users />} label="人數" value={`${booking.totalPeople} 位`} />
+        <ReviewRow icon={<ShieldCheck />} label="預約狀態" value={booking.bookingStatus === "requested" ? "等待農場確認" : booking.bookingStatus} />
+        <ReviewRow icon={<CreditCard />} label="付款狀態" value="尚未開放付款" />
+      </div>}
+      <button className="back-button" onClick={onBack}><ArrowLeft /> 返回預約</button>
+    </div>
+  </SimpleView>;
+}
