@@ -28,6 +28,7 @@
 - Manager 顯示此選單為「目前顯示的選單」。
 - A 區「預約農場參訪」已從舊 Workers.dev 網址改為 `https://liff.line.me/2011633158-ZdAj8eJh`。
 - B 至 F 的既有動作保持不變。
+- 後台畫面證據：`qa/line-rich-menu-liff-linked.png`。
 
 ## 功能與資料
 
