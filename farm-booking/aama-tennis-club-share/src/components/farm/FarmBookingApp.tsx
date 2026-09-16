@@ -56,6 +56,10 @@ type BookingRecord = {
   experience: string;
 };
 
+type LineIdentity =
+  | { status: "disabled" | "loading" | "guest" | "error"; displayName?: never }
+  | { status: "ready"; displayName: string };
+
 const weekday = new Intl.DateTimeFormat("zh-TW", { weekday: "short", timeZone: "Asia/Taipei" });
 const monthDay = new Intl.DateTimeFormat("zh-TW", { month: "numeric", day: "numeric", timeZone: "Asia/Taipei" });
 const fullDate = new Intl.DateTimeFormat("zh-TW", { year: "numeric", month: "long", day: "numeric", weekday: "short", timeZone: "Asia/Taipei" });
@@ -81,8 +85,43 @@ export default function FarmBookingApp({ initialView = "booking" }: { initialVie
   const [note, setNote] = useState("");
   const [consented, setConsented] = useState(false);
   const [checkout, setCheckout] = useState<CheckoutState>({ status: "idle" });
+  const [lineIdentity, setLineIdentity] = useState<LineIdentity>({
+    status: process.env.NEXT_PUBLIC_LIFF_ID ? "loading" : "disabled",
+  });
   const idempotencyKey = useRef("");
   const people = adult + child + infant;
+
+  useEffect(() => {
+    const liffId = process.env.NEXT_PUBLIC_LIFF_ID;
+    if (!liffId) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const liff = (await import("@line/liff")).default;
+        await liff.init({ liffId });
+        if (!liff.isLoggedIn()) {
+          setLineIdentity({ status: "guest" });
+          return;
+        }
+        const idToken = liff.getIDToken();
+        if (!idToken) throw new Error("LINE 未提供登入憑證");
+        const response = await fetch("/api/auth/line", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ idToken }),
+        });
+        const result = await response.json() as { member?: { displayName?: string }; error?: string };
+        if (!response.ok || !result.member?.displayName) throw new Error(result.error || "LINE 登入驗證失敗");
+        if (!cancelled) {
+          setLineIdentity({ status: "ready", displayName: result.member.displayName });
+          setContactName((name) => name || result.member?.displayName || "");
+        }
+      } catch {
+        if (!cancelled) setLineIdentity({ status: "error" });
+      }
+    })();
+    return () => { cancelled = true; };
+  }, []);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -182,7 +221,7 @@ export default function FarmBookingApp({ initialView = "booking" }: { initialVie
           <Image src="/brand/wegrow-logo.png" width={46} height={46} alt="WeGrow" />
           <span><strong>威果 WeGrow</strong><small>農場參訪預約</small></span>
         </button>
-        <span className="line-chip"><MessageCircle /> LINE 服務</span>
+        <span className="line-chip"><MessageCircle /> {lineIdentity.status === "ready" ? `LINE 已連結：${lineIdentity.displayName}` : "LINE 服務"}</span>
       </header>
 
       {view === "booking" && (
@@ -316,7 +355,7 @@ export default function FarmBookingApp({ initialView = "booking" }: { initialVie
         </>
       )}
 
-      {view === "mine" && <MyBookingsView onBack={() => changeView("booking")} />}
+      {view === "mine" && <MyBookingsView identity={lineIdentity} onBack={() => changeView("booking")} />}
       {view === "info" && <SimpleView icon={<Info />} title="交通與注意事項" intro="地址與預約制服務時間須由農場核准後才會公開。"><div className="info-list"><InfoRow icon={<MapPin />} title="集合地點" text="正式地址與導航連結尚待農場確認，不顯示推測位置。" /><InfoRow icon={<Sprout />} title="參訪準備" text="建議準備帽子、防曬用品、飲用水，並穿方便行走的包覆性鞋款。" /><InfoRow icon={<CalendarDays />} title="雨天安排" text="將依核准後的場次政策通知，不會自行假設照常或取消。" /></div></SimpleView>}
       {view === "contact" && <SimpleView icon={<MessageCircle />} title="聯繫農場" intro="人數較多、沒有合適場次，或有特殊需求，可直接聯繫官方 LINE。"><a className="line-contact" href="https://line.me/R/ti/p/@647hlrhw" target="_blank" rel="noreferrer"><MessageCircle /><span><strong>開啟 WeGrow 官方 LINE</strong><small>@647hlrhw</small></span><ExternalLink /></a><a className="shop-link" href="https://wegrow.oen.tw/" target="_blank" rel="noreferrer">訂購當季鮮果 <ExternalLink /></a></SimpleView>}
 
@@ -339,12 +378,35 @@ function SimpleView({ icon, title, intro, children }: { icon: React.ReactNode; t
 function InfoRow({ icon, title, text }: { icon: React.ReactNode; title: string; text: string }) { return <div className="info-row"><span>{icon}</span><div><strong>{title}</strong><p>{text}</p></div></div>; }
 function PriceLine({ label, value, highlight = false }: { label: string; value: number; highlight?: boolean }) { return <div className={highlight ? "price-line highlight" : "price-line"}><span>{label}</span><strong>{value < 0 ? "−" : ""}NT$ {Math.abs(value).toLocaleString()}</strong></div>; }
 
-function MyBookingsView({ onBack }: { onBack: () => void }) {
+function MyBookingsView({ identity, onBack }: { identity: LineIdentity; onBack: () => void }) {
   const [phone, setPhone] = useState("");
   const [code, setCode] = useState("");
   const [status, setStatus] = useState<"idle" | "loading" | "error" | "ready">("idle");
   const [message, setMessage] = useState("");
   const [booking, setBooking] = useState<BookingRecord | null>(null);
+  const [mine, setMine] = useState<BookingRecord[]>([]);
+
+  useEffect(() => {
+    if (identity.status !== "ready") return;
+    let cancelled = false;
+    setStatus("loading");
+    fetch("/api/farm/bookings?mine=1")
+      .then(async (response) => {
+        const result = await response.json() as { bookings?: BookingRecord[]; error?: string };
+        if (!response.ok || !result.bookings) throw new Error(result.error || "無法讀取本人預約");
+        if (!cancelled) {
+          setMine(result.bookings);
+          setStatus("ready");
+        }
+      })
+      .catch((error: unknown) => {
+        if (!cancelled) {
+          setMessage(error instanceof Error ? error.message : "無法讀取本人預約");
+          setStatus("error");
+        }
+      });
+    return () => { cancelled = true; };
+  }, [identity.status]);
 
   async function lookup() {
     setStatus("loading");
@@ -366,8 +428,19 @@ function MyBookingsView({ onBack }: { onBack: () => void }) {
     }
   }
 
-  return <SimpleView icon={<ReceiptText />} title="我的預約" intro="用預約時填寫的手機號碼與 8 碼查詢碼查看進度。">
+  return <SimpleView icon={<ReceiptText />} title="我的預約" intro={identity.status === "ready" ? `已使用 LINE 登入：${identity.displayName}` : "用預約時填寫的手機號碼與 8 碼查詢碼查看進度。"}>
     <div className="booking-panel lookup-panel">
+      {identity.status === "loading" && <div className="loading-state"><LoaderCircle /> 正在連結 LINE 身分…</div>}
+      {identity.status === "ready" && status === "ready" && mine.length === 0 && <div className="empty-state">這個 LINE 帳號目前沒有預約。</div>}
+      {identity.status === "ready" && mine.map((item) => <div className="review-block lookup-result" key={item.bookingNumber}>
+        <ReviewRow icon={<ReceiptText />} label="預約編號" value={item.bookingNumber} />
+        <ReviewRow icon={<CalendarDays />} label="日期" value={fullDate.format(new Date(item.startsAt))} />
+        <ReviewRow icon={<Clock3 />} label="時間" value={`${timeOnly.format(new Date(item.startsAt))}–${timeOnly.format(new Date(item.endsAt))}`} />
+        <ReviewRow icon={<Users />} label="人數" value={`${item.totalPeople} 位`} />
+        <ReviewRow icon={<ShieldCheck />} label="預約狀態" value={item.bookingStatus === "requested" ? "等待農場確認" : item.bookingStatus} />
+        <ReviewRow icon={<CreditCard />} label="付款狀態" value="尚未開放付款" />
+      </div>)}
+      {identity.status !== "ready" && <>
       <div className="form-grid">
         <label>手機號碼<input value={phone} onChange={(event) => setPhone(event.target.value)} inputMode="tel" placeholder="0912 345 678" /></label>
         <label>8 碼查詢碼<input value={code} onChange={(event) => setCode(event.target.value.toUpperCase())} maxLength={8} placeholder="例：A1B2C3D4" /></label>
@@ -384,6 +457,7 @@ function MyBookingsView({ onBack }: { onBack: () => void }) {
         <ReviewRow icon={<ShieldCheck />} label="預約狀態" value={booking.bookingStatus === "requested" ? "等待農場確認" : booking.bookingStatus} />
         <ReviewRow icon={<CreditCard />} label="付款狀態" value="尚未開放付款" />
       </div>}
+      </>}
       <button className="back-button" onClick={onBack}><ArrowLeft /> 返回預約</button>
     </div>
   </SimpleView>;

@@ -17,7 +17,8 @@
     }
   ],
   "vars": {
-    "NEXT_PUBLIC_LIFF_ID": "",
+    "NEXT_PUBLIC_LIFF_ID": "2011633158-ZdAj8eJh",
+    "NEXT_PUBLIC_SITE_URL": "https://booking.wegrow-orbit.com",
     "DEV_FAKE_LOGIN": "1"
   },
   "env": {
@@ -25,6 +26,9 @@
       "name": "wegrow-farm-booking",
       "workers_dev": true,
       "preview_urls": false,
+      "routes": [
+        { "pattern": "booking.wegrow-orbit.com", "custom_domain": true }
+      ],
       "observability": { "enabled": true, "head_sampling_rate": 1 },
       "d1_databases": [
         {
@@ -35,7 +39,8 @@
         }
       ],
       "vars": {
-        "NEXT_PUBLIC_LIFF_ID": ""
+        "NEXT_PUBLIC_LIFF_ID": "2011633158-ZdAj8eJh",
+        "NEXT_PUBLIC_SITE_URL": "https://booking.wegrow-orbit.com"
       }
     }
   }

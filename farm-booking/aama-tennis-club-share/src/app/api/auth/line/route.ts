@@ -27,5 +27,5 @@ export async function POST(req: Request) {
   if (!row) return NextResponse.json({ error: "建立成員失敗" }, { status: 500 });
   const token = await signSession(row.id, env.SESSION_SECRET);
   (await cookies()).set(SESSION_COOKIE, token, { httpOnly: true, secure: process.env.NODE_ENV === "production", sameSite: "lax", path: "/", maxAge: SESSION_MAX_AGE });
-  return NextResponse.json({ ok: true });
+  return NextResponse.json({ ok: true, member: { id: row.id, displayName: profile.name } });
 }

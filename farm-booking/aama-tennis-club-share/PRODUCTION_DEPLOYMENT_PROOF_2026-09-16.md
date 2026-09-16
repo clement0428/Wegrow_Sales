@@ -2,46 +2,60 @@
 
 ## 正式入口
 
-- HTTPS：<https://wegrow-farm-booking.clement0428.workers.dev>
+- 正式 HTTPS：https://booking.wegrow-orbit.com/
+- LINE LIFF：https://liff.line.me/2011633158-ZdAj8eJh
+- LINE Provider：WeGrow 威果農業（Provider ID `2005546174`）
+- LINE Login Channel：WeGrow 農場預約（Channel ID `2011633158`）
+- LIFF App：WeGrow 農場參訪預約（LIFF ID `2011633158-ZdAj8eJh`）
 - Cloudflare Worker：`wegrow-farm-booking`
-- Worker Version ID：`d9f09756-4c95-4112-881f-98292d8fedee`
+- Worker Version ID：`99a984c1-daaa-438c-8a0c-03dbdd9ddbaf`
 - Cloudflare D1：`wegrow-farm-booking-prod`
 - D1 Database ID：`4f40a0e0-e5bb-4de0-93ad-91ad3b32dfc7`
-- 已套用 migration：`0001` 至 `0007`
-- 手機 QR Code：`qa/wegrow-farm-booking-production-qr.png`
+- QR Code：`qa/wegrow-farm-booking-production-qr.png`（內容為 LIFF URL）
 
-## 正式環境實測
+## 正式環境查核
 
-- 手機建立預約並以手機號碼＋8 碼查詢碼查回：PASS
-- 桌面版面及正式環境管理頁權限邊界：PASS
-- 360、430、650、768、1024、1440 px 響應式：PASS
-- LINE 穩定入口路由：PASS
-- D1 開放日期／容量 API：PASS（`mode=live`、`source=d1_farm_slots`）
-- 付款安全邊界：PASS（固定顯示「尚未開放付款」，不建立假付款）
-- 行事曆 ICS：PASS
-- 冪等：同一 `idempotencyKey` 第一次回 201，第二次回 200、`duplicate=true`，且為同一預約。
-- 併發容量：同時送出兩筆 30 人預約，僅一筆成功；另一筆回 409 `capacity_changed`。
-- 測試資料清理：正式 D1 中測試預約剩餘筆數為 0。
-
-自動化結果：`qa/e2e-result.json`。手機建立與查詢畫面：`qa/farm-mobile-booking-created.png`、`qa/farm-mobile-booking-lookup.png`。
+- `booking.wegrow-orbit.com`：HTTP 200，標題為「WeGrow 威果農場｜參訪預約」。
+- 場次 API：`mode=live`、`source=d1_farm_slots`，讀到 4 個農場場次。
+- LINE 驗證 API：無效 ID token 回傳 401，未因缺少正式環境設定而 500。
+- LIFF URL 實際導向 `https://booking.wegrow-orbit.com/`，頁面、Logo、科技溫室照片、方案試算與正式 D1 場次均載入。
+- 生產環境沒有 `DEV_FAKE_LOGIN`；`LINE_CHANNEL_ID` 與 `SESSION_SECRET` 使用 Cloudflare secrets，沒有寫入 Git 或本報告。
 
 ## LINE 官方帳號
 
-- 帳號：`@647hlrhw`
+- 官方帳號：`@647hlrhw`
 - 圖文選單：`WeGrow 官方圖文選單 20260916`（ID `20215954`）
-- LINE Official Account Manager 回讀狀態：列於「目前顯示的選單」。
-- A 區「預約農場參訪」已由舊靜態 QA 頁改為正式 Cloudflare HTTPS 入口：
-  `https://wegrow-farm-booking.clement0428.workers.dev`
-- B 至 F 原動作保持不變。
+- Manager 顯示此選單為「目前顯示的選單」。
+- A 區「預約農場參訪」已從舊 Workers.dev 網址改為 `https://liff.line.me/2011633158-ZdAj8eJh`。
+- B 至 F 的既有動作保持不變。
 
-## 尚未宣告完成
+## 功能與資料
 
-- LINE Pay 與信用卡尚未串接，頁面明確標示「尚未開放付款」。
-- LIFF ID 尚未設定；目前從圖文選單開啟一般 HTTPS 預約頁。
-- 前一天 LINE/Gmail 提醒及顧客 Google Calendar 寫入尚未完成真實外部串接。
-- 場次目前已存於 D1，但農場人員可視化新增／關閉場次的正式管理介面仍待完成。
-- 價格在正式核准前仍標示為參考，不能視為已啟用正式收款報價。
+- LIFF 初始化後以 LINE ID token 向後端驗證，建立安全的 HttpOnly session。
+- 已登入 LINE 的新預約會寫入 `customer_member_id`。
+- 「我的預約」可依 LINE member ID 自動列出本人預約。
+- 未登入 LINE 時仍保留手機號碼加 8 碼查詢碼的備援流程。
+- 付款維持停用，畫面與 API 均明確顯示「尚未開放付款」，不會產生假付款成功。
 
-## 驗收界線
+## 自動驗收
 
-本輪可宣告：手機可從官方 LINE 圖文選單進入正式 HTTPS 頁，讀取 D1 開放場次、選人數、試算門票／盆栽／餐飲、送出不收款的預約申請，並查回該預約。不可宣告：正式收款、真實提醒、LIFF 身分綁定或完整後台營運已完成。
+- Vitest：11 個測試檔、66 項全部通過。
+- TypeScript：`tsc --noEmit` 通過。
+- Next.js production build：通過。
+- OpenNext Cloudflare build／deploy：通過。
+- 正式網址 Playwright E2E：
+  - 390px 手機建立與查詢預約：PASS
+  - 1440px 桌面與後台權限邊界：PASS
+  - 360／430／650／768／1024px 無水平溢出：PASS
+  - `/booking`、`/my-bookings`、`/visit-info`、`/contact`：PASS
+  - D1 場次 API：PASS
+  - 未設定付款必須回傳阻擋：PASS
+  - ICS 行事曆：PASS
+- E2E 建立的測試預約已刪除，電話 `0912345678` 的剩餘測試列為 0。
+- 證據：`qa/e2e-result.json`、`qa/farm-mobile-home.png`、`qa/farm-mobile-booking-created.png`、`qa/farm-mobile-booking-lookup.png`。
+
+## 尚待真機驗收
+
+- 可控瀏覽器已證明 LIFF URL 與正式端點相連，但它不是手機 LINE App，不能冒稱已完成「LINE App 內本人身分」真機驗收。
+- 唯一剩餘人工驗收：用手機開啟 `@647hlrhw`，點「預約農場參訪」，確認頁首顯示「LINE 已連結：姓名」，建立一筆預約後到「我的預約」看到同一筆。
+- LINE Pay／信用卡、取消後釋放名額、前一天訊息提醒與外部 Google Calendar 寫入仍未開放；目前只有安全的付款阻擋與 ICS 下載能力。

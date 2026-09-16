@@ -99,3 +99,19 @@ export async function findBooking(phone: string, lookupCode: string): Promise<Fa
   `).bind(phone, lookupCode).first<BookingRow>();
   return row ? mapBooking(row) : null;
 }
+
+export async function listMemberBookings(memberId: string): Promise<FarmBookingRecord[]> {
+  const db = await getDb();
+  const result = await db.prepare(`
+    SELECT b.booking_number, b.lookup_code, b.contact_name, b.contact_phone, b.group_name,
+           b.adult_count, b.child_count, b.infant_count, b.total_people,
+           b.plant_count, b.meal_count, b.amount_twd, b.booking_status,
+           b.payment_status, b.created_at, s.starts_at, s.ends_at, e.name AS experience
+    FROM farm_bookings b
+    JOIN farm_slots s ON s.id = b.slot_id
+    JOIN farm_experiences e ON e.id = s.experience_id
+    WHERE b.customer_member_id = ? AND b.cancelled_at IS NULL
+    ORDER BY datetime(s.starts_at) DESC
+  `).bind(memberId).all<BookingRow>();
+  return (result.results ?? []).map(mapBooking);
+}

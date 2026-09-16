@@ -2,7 +2,8 @@ import { z } from "zod";
 import { getDb } from "@/lib/db/client";
 import { newId } from "@/lib/db/uuid";
 import { calculateVisitPrice } from "@/lib/farm/pricing";
-import { findBooking } from "@/lib/farm/repository";
+import { findBooking, listMemberBookings } from "@/lib/farm/repository";
+import { getCurrentMember } from "@/lib/auth/current-member";
 
 const createSchema = z.object({
   slotId: z.string().min(1).max(100),
@@ -39,6 +40,7 @@ export async function POST(request: Request) {
   }
 
   const db = await getDb();
+  const member = await getCurrentMember();
   const prior = await db.prepare(
     "SELECT contact_phone, lookup_code FROM farm_bookings WHERE idempotency_key = ?",
   ).bind(input.idempotencyKey).first<{ contact_phone: string; lookup_code: string }>();
@@ -63,12 +65,12 @@ export async function POST(request: Request) {
   // A single conditional INSERT keeps capacity checking and reservation creation atomic in D1.
   const result = await db.prepare(`
     INSERT INTO farm_bookings (
-      id, booking_number, lookup_code, slot_id, contact_name, contact_phone, group_name,
+      id, booking_number, lookup_code, slot_id, customer_member_id, contact_name, contact_phone, group_name,
       adult_count, child_count, infant_count, total_people, plant_count, meal_count,
       customer_note, amount_twd, booking_status, payment_status, hold_expires_at,
       ticket_snapshot_json, policy_snapshot_json, idempotency_key, created_at, updated_at
     )
-    SELECT ?, ?, ?, s.id, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+    SELECT ?, ?, ?, s.id, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
            'requested', 'not_open', NULL, ?,
            json_object(
              'capacityPolicyId', p.id,
@@ -108,7 +110,7 @@ export async function POST(request: Request) {
         ELSE 0
       END
   `).bind(
-    id, number, code, input.contactName, input.phone, input.groupName,
+    id, number, code, member?.id ?? null, input.contactName, input.phone, input.groupName,
     input.adultCount, input.childCount, input.infantCount, totalPeople,
     input.plantCount, input.mealCount, input.note, price.totalTwd,
     ticketSnapshot, input.idempotencyKey, now, now, input.slotId,
@@ -132,6 +134,15 @@ export async function POST(request: Request) {
 
 export async function GET(request: Request) {
   const url = new URL(request.url);
+  if (url.searchParams.get("mine") === "1") {
+    const member = await getCurrentMember();
+    if (!member) return Response.json({ error: "尚未使用 LINE 登入" }, { status: 401 });
+    return Response.json({
+      bookings: await listMemberBookings(member.id),
+      member: { displayName: member.display_name },
+      payment: { enabled: false, status: "尚未開放付款" },
+    });
+  }
   const phone = (url.searchParams.get("phone") ?? "").replace(/\D/g, "");
   const code = (url.searchParams.get("code") ?? "").trim();
   if (!/^09\d{8}$/.test(phone) || !/^[A-Za-z0-9]{8}$/.test(code)) {
