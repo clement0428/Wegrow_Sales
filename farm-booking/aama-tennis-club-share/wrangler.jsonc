@@ -1,0 +1,42 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "aama-tennis-club-dev",
+  "main": ".open-next/worker.js",
+  "compatibility_date": "2026-09-01",
+  "compatibility_flags": ["nodejs_compat", "global_fetch_strictly_public"],
+  "assets": { "directory": ".open-next/assets", "binding": "ASSETS" },
+  "workers_dev": true,
+  "preview_urls": false,
+  "observability": { "enabled": true, "head_sampling_rate": 1 },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "tennis-club-dev",
+      "database_id": "<D1_DEV_DATABASE_ID>",
+      "migrations_dir": "d1/migrations"
+    }
+  ],
+  "vars": {
+    "NEXT_PUBLIC_LIFF_ID": "",
+    "DEV_FAKE_LOGIN": "1"
+  },
+  "env": {
+    "production": {
+      "name": "aama-tennis-club",
+      "workers_dev": true,
+      "preview_urls": false,
+      "observability": { "enabled": true, "head_sampling_rate": 1 },
+      "d1_databases": [
+        {
+          "binding": "DB",
+          "database_name": "tennis-club-prod",
+          "database_id": "<D1_PROD_DATABASE_ID>",
+          "migrations_dir": "d1/migrations"
+        }
+      ],
+      "vars": {
+        "NEXT_PUBLIC_LIFF_ID": "<LIFF_ID>"
+      }
+    }
+  }
+}

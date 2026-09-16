@@ -1,0 +1,13 @@
+{
+  "baseURL": "http://localhost:3218",
+  "results": [
+    "mobile booking flow PASS",
+    "desktop layout and production admin access boundary PASS",
+    "360px through 1024px responsive layout PASS",
+    "stable LINE entry routes PASS",
+    "availability API PASS",
+    "payment safety boundary PASS",
+    "ICS PASS"
+  ],
+  "completedAt": "2026-09-16T08:49:06.699Z"
+}
