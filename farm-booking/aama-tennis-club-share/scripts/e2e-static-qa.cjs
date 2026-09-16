@@ -9,6 +9,9 @@ const baseURL = process.env.QA_URL || "http://localhost:3220/outputs/line-farm-b
   const page = await browser.newPage({ viewport: { width: 390, height: 844 } });
   await page.goto(baseURL, { waitUntil: "networkidle" });
   if (!await page.getByRole("heading", { name: "來麻豆，走進科技農場" }).isVisible()) throw new Error("hero missing");
+  if (!await page.getByText("尚未開放付款", { exact: true }).isVisible()) throw new Error("payment unavailable label missing");
+  if (!await page.getByAltText("WeGrow 農場預約 HTTPS 驗收站 QR Code").isVisible()) throw new Error("QR code missing");
+  if (!await page.getByAltText("WeGrow 農場預約 HTTPS 驗收站 QR Code").evaluate((image) => image.complete && image.naturalWidth > 0)) throw new Error("QR code failed to load");
   if (await page.evaluate(() => document.documentElement.scrollWidth > document.documentElement.clientWidth)) throw new Error("horizontal overflow");
   await page.getByRole("button", { name: "＋" }).first().click();
   await page.getByRole("button", { name: "10/10（六）" }).click();
