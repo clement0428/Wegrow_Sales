@@ -1,7 +1,7 @@
 name: Deploy
 on:
   push:
-    branches: [main, dev]
+    branches: [main, master, dev]
   workflow_dispatch:
 
 jobs:
@@ -21,8 +21,8 @@ jobs:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
         run: |
-          if [ "${{ github.ref_name }}" = "main" ]; then
-            echo "Deploying prod (main → aama-tennis-club)"
+          if [ "${{ github.ref_name }}" = "main" ] || [ "${{ github.ref_name }}" = "master" ]; then
+            echo "Deploying prod (${{ github.ref_name }} → wegrow-farm-booking)"
             npm run deploy
           else
             echo "Deploying dev (dev → aama-tennis-club-dev)"

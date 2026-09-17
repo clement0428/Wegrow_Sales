@@ -6,14 +6,17 @@ export type VisitPriceInput = {
   people: number;
   plantCount: number;
   mealCount: number;
+  ticketRateBps?: number;
 };
 
-export function calculateVisitPrice({ people, plantCount, mealCount }: VisitPriceInput) {
-  const ticketSubtotalTwd = Math.max(0, people) * TICKET_PRICE_TWD;
+export function calculateVisitPrice({ people, plantCount, mealCount, ticketRateBps = 10_000 }: VisitPriceInput) {
+  const ticketUnitPriceTwd = Math.round(TICKET_PRICE_TWD * Math.max(0, ticketRateBps) / 10_000);
+  const ticketSubtotalTwd = Math.max(0, people) * ticketUnitPriceTwd;
   const addOnSubtotalTwd = Math.max(0, plantCount) * PLANT_PRICE_TWD + Math.max(0, mealCount) * MEAL_PRICE_TWD;
   const creditAppliedTwd = Math.min(ticketSubtotalTwd, addOnSubtotalTwd);
 
   return {
+    ticketUnitPriceTwd,
     ticketSubtotalTwd,
     addOnSubtotalTwd,
     creditAppliedTwd,

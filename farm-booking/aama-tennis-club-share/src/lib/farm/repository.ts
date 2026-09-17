@@ -1,10 +1,12 @@
 import "server-only";
 import { getDb } from "@/lib/db/client";
 import { maxNewGroupSize, type CapacityPolicy } from "./capacity";
+import { isAllowedBookingSlot, ticketRateBpsForSlot } from "./visit-policy";
 
 export type PublicFarmSlot = {
   id: string; startsAt: string; endsAt: string; existingGroups: number[];
   maxNewGroupSize: number; available: boolean; experience: string;
+  ticketRateBps: number;
 };
 
 type SlotRow = {
@@ -43,7 +45,7 @@ export async function listPublicSlots(people: number): Promise<PublicFarmSlot[]>
     ORDER BY datetime(s.starts_at)
   `).bind(now, now, now).all<SlotRow>();
 
-  return (result.results ?? []).map((row) => {
+  return (result.results ?? []).filter((row) => isAllowedBookingSlot(row.starts_at, row.ends_at)).map((row) => {
     const existingGroups = row.group_sizes
       ? row.group_sizes.split(",").map(Number).filter((value) => Number.isInteger(value) && value > 0)
       : [];
@@ -51,6 +53,7 @@ export async function listPublicSlots(people: number): Promise<PublicFarmSlot[]>
     return {
       id: row.id, startsAt: row.starts_at, endsAt: row.ends_at, existingGroups,
       maxNewGroupSize: maximum, available: maximum >= people, experience: row.experience,
+      ticketRateBps: ticketRateBpsForSlot(row.starts_at),
     };
   });
 }

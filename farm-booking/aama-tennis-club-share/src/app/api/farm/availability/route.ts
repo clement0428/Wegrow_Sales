@@ -11,7 +11,7 @@ export async function GET(request: Request) {
     mode: "live",
     source: "d1_farm_slots",
     published: true,
-    notice: "場次與剩餘名額來自農場預約資料庫；價格仍為待核定參考，付款尚未開放。",
+    notice: "場次與剩餘名額來自農場預約資料庫；週五、週六、週日請聯繫客服，付款尚未開放。",
     people,
     slots,
   });

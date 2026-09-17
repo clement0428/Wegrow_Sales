@@ -4,6 +4,7 @@ import { newId } from "@/lib/db/uuid";
 import { calculateVisitPrice } from "@/lib/farm/pricing";
 import { findBooking, listMemberBookings } from "@/lib/farm/repository";
 import { getCurrentMember } from "@/lib/auth/current-member";
+import { isAllowedBookingSlot, ticketRateBpsForSlot } from "@/lib/farm/visit-policy";
 
 const createSchema = z.object({
   slotId: z.string().min(1).max(100),
@@ -49,13 +50,26 @@ export async function POST(request: Request) {
     return Response.json({ booking: existing, duplicate: true });
   }
 
-  const price = calculateVisitPrice({ people: totalPeople, plantCount: input.plantCount, mealCount: input.mealCount });
+  const slot = await db.prepare(
+    "SELECT starts_at, ends_at FROM farm_slots WHERE id = ? LIMIT 1",
+  ).bind(input.slotId).first<{ starts_at: string; ends_at: string }>();
+  if (!slot || !isAllowedBookingSlot(slot.starts_at, slot.ends_at)) {
+    return Response.json({ error: "這個時段不符合農場開放規則，請重新選擇。" }, { status: 400 });
+  }
+  const ticketRateBps = ticketRateBpsForSlot(slot.starts_at);
+  const price = calculateVisitPrice({
+    people: totalPeople,
+    plantCount: input.plantCount,
+    mealCount: input.mealCount,
+    ticketRateBps,
+  });
   const id = newId();
   const number = makeBookingNumber();
   const code = makeLookupCode();
   const now = new Date().toISOString();
   const ticketSnapshot = JSON.stringify({
-    status: "reference_price_pending_approval",
+    status: "approved_booking_price",
+    ticketRateBps,
     people: totalPeople,
     plantCount: input.plantCount,
     mealCount: input.mealCount,

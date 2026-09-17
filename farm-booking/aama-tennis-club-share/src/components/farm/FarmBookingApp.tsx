@@ -4,8 +4,9 @@ import Image from "next/image";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   ArrowLeft, ArrowRight, CalendarDays, CalendarPlus, Check, ChevronRight, Clock3,
-  CreditCard, ExternalLink, Info, LoaderCircle, MapPin, MessageCircle, Minus, Plus,
-  ReceiptText, RefreshCw, ShieldCheck, ShoppingBasket, Sprout, Ticket, Users,
+  Car, CloudRain, CreditCard, ExternalLink, Footprints, Info, LoaderCircle, MapPin,
+  MessageCircle, Minus, Plus, ReceiptText, RefreshCw, ShieldCheck, ShoppingBasket,
+  Sprout, Ticket, Users,
 } from "lucide-react";
 import {
   calculateVisitPrice,
@@ -24,6 +25,7 @@ type Slot = {
   maxNewGroupSize: number;
   available: boolean;
   experience: string;
+  ticketRateBps: number;
 };
 
 type AvailabilityPayload = {
@@ -154,7 +156,8 @@ export default function FarmBookingApp({ initialView = "booking" }: { initialVie
   const activeDate = openDates.some((date) => date.key === dateFilter) ? dateFilter : (openDates[0]?.key ?? "");
   const availableSlots = useMemo(() => slots.filter((slot) => slot.available && slot.startsAt.startsWith(activeDate)), [activeDate, slots]);
   const selectedSlot = slots.find((slot) => slot.id === slotId) ?? null;
-  const price = calculateVisitPrice({ people, plantCount, mealCount });
+  const ticketRateBps = selectedSlot?.ticketRateBps ?? 10_000;
+  const price = calculateVisitPrice({ people, plantCount, mealCount, ticketRateBps });
   const validPhone = /^09\d{8}$/.test(phone.replace(/\D/g, ""));
 
   function changeCount(kind: "adult" | "child" | "infant", delta: number) {
@@ -237,7 +240,7 @@ export default function FarmBookingApp({ initialView = "booking" }: { initialVie
           </section>
 
           {previewMode && <div className="preview-notice"><Info /><span><strong>系統預覽</strong> 場次尚未由正式資料庫發布。</span></div>}
-          {!previewMode && <div className="preview-notice"><Info /><span><strong>場次已連接農場資料庫</strong> 價格仍為待核定參考，付款尚未開放。</span></div>}
+          {!previewMode && <div className="preview-notice"><Info /><span><strong>場次已連接農場資料庫</strong> 週二至週四 14:00–18:00 可直接預約；週五、六、日請先聯繫客服。付款尚未開放。</span></div>}
 
           <nav className="stepper" aria-label="預約進度">
             {["方案", "時段", "資料", "確認"].map((label, index) => {
@@ -252,7 +255,7 @@ export default function FarmBookingApp({ initialView = "booking" }: { initialVie
                 <SectionHeading kicker="STEP 1" title="選擇這次的參訪內容" icon={<Sprout />} />
                 <div className="ticket-card">
                   <span><Ticket /></span>
-                  <div><strong>農場門票與導覽</strong><p>NT$ {TICKET_PRICE_TWD}／人；門票金額可折抵參訪當日現場選購。</p></div>
+                  <div><strong>農場門票與導覽</strong><p>平日 NT$ {TICKET_PRICE_TWD}／人；假日時段 NT$ 360／人。門票金額可折抵參訪當日現場選購。</p></div>
                   <b>必選</b>
                 </div>
                 <h3 className="field-title">加選體驗</h3>
@@ -285,9 +288,14 @@ export default function FarmBookingApp({ initialView = "booking" }: { initialVie
                 <BackButton onClick={() => setStep(1)} />
                 <SectionHeading kicker="STEP 2" title="選擇農場開放時段" icon={<CalendarDays />} />
                 <p className="section-help">只顯示農場已建立、且能接待 {people} 位的日期與時段。</p>
+                <div className="schedule-notice">
+                  <strong>固定開放：週二、週三、週四 14:00–18:00</strong>
+                  <span>週五、週六、週日需先聯繫客服討論，確認後由農場開放專屬時段；假日時段門票加 20%。</span>
+                  <a href="https://line.me/R/ti/p/@647hlrhw" target="_blank" rel="noreferrer"><MessageCircle /> 聯繫官方 LINE</a>
+                </div>
                 {availability === "loading" && <div className="loading-state"><LoaderCircle /> 正在讀取農場開放日…</div>}
                 {availability === "error" && <div className="empty-state"><strong>開放日載入失敗</strong><span>{availabilityMessage}</span><button onClick={() => window.location.reload()}><RefreshCw /> 重新載入</button></div>}
-                {availability === "ready" && slots.length === 0 && <div className="empty-state">目前尚未開放預約，可聯絡農場詢問。</div>}
+                {availability === "ready" && slots.length === 0 && <div className="empty-state"><strong>目前沒有可直接預約的場次</strong><span>週五、週六、週日請聯繫客服討論開放時間。</span><a href="https://line.me/R/ti/p/@647hlrhw" target="_blank" rel="noreferrer"><MessageCircle /> 聯繫官方 LINE</a></div>}
                 {availability === "ready" && slots.length > 0 && (
                   <>
                     <div className="date-pills">
@@ -300,7 +308,7 @@ export default function FarmBookingApp({ initialView = "booking" }: { initialVie
                         const end = new Date(slot.endsAt);
                         return <button key={slot.id} className={selected ? "slot selected" : "slot"} onClick={() => setSlotId(slot.id)}>
                           <span className="slot-date"><strong>{monthDay.format(start)}</strong><small>{weekday.format(start)}</small></span>
-                          <span className="slot-main"><strong>{timeOnly.format(start)}–{timeOnly.format(end)}</strong><small>{slot.experience}</small><em>可新增 1 團，這團最多 {slot.maxNewGroupSize} 人</em></span>
+                          <span className="slot-main"><strong>{timeOnly.format(start)}–{timeOnly.format(end)}</strong><small>{slot.experience}{slot.ticketRateBps > 10_000 ? " · 假日門票 NT$ 360／人" : ""}</small><em>可新增 1 團，這團最多 {slot.maxNewGroupSize} 人</em></span>
                           <span className="radio-dot">{selected && <Check size={15} />}</span>
                         </button>;
                       })}
@@ -328,7 +336,7 @@ export default function FarmBookingApp({ initialView = "booking" }: { initialVie
                   <button type="button" className="payment" disabled><MessageCircle /> LINE Pay <small>尚未開放付款</small></button>
                   <button type="button" className="payment" disabled><CreditCard /> 信用卡 <small>尚未開放付款</small></button>
                 </div>
-                <label className="consent"><input checked={consented} onChange={(event) => setConsented(event.target.checked)} type="checkbox" /> <span>我已閱讀折抵、取消、退費與雨天政策；正式發布前仍須由農場核准完整條款。</span></label>
+                <label className="consent"><input checked={consented} onChange={(event) => setConsented(event.target.checked)} type="checkbox" /> <span>我知道雨天活動照常；豪雨或颱風可能另行通知取消。入場會換拖鞋，場域地面不是平整水泥地，請勿奔跑並小心行走。</span></label>
                 <button className="primary-button" disabled={!contactName.trim() || !validPhone || !consented} onClick={() => setStep(4)}>檢查預約內容 <ArrowRight /></button>
               </>
             )}
@@ -344,7 +352,7 @@ export default function FarmBookingApp({ initialView = "booking" }: { initialVie
                   <ReviewRow icon={<ShoppingBasket />} label="加選" value={`盆栽 ${plantCount}、餐飲 ${mealCount}`} />
                   <ReviewRow icon={<CreditCard />} label="付款" value="尚未開放付款" />
                 </div>
-                <div className="price-box"><span>待核定參考金額</span><strong>NT$ {price.totalTwd.toLocaleString()}</strong><small>門票 NT$ {price.ticketSubtotalTwd.toLocaleString()}；折抵試算 NT$ {price.creditAppliedTwd.toLocaleString()}。這不是正式報價，農場確認前可能調整。</small></div>
+                <div className="price-box"><span>預約金額</span><strong>NT$ {price.totalTwd.toLocaleString()}</strong><small>門票 NT$ {price.ticketUnitPriceTwd.toLocaleString()}／人，共 NT$ {price.ticketSubtotalTwd.toLocaleString()}；本次折抵 NT$ {price.creditAppliedTwd.toLocaleString()}。目前尚未開放付款。</small></div>
                 {checkout.status === "idle" && <button className="primary-button" onClick={submitBooking}>送出預約申請 <ArrowRight /></button>}
                 {checkout.status === "loading" && <button className="primary-button" disabled><LoaderCircle /> 正在保留名額…</button>}
                 {checkout.status === "blocked" && <div className="blocked-result"><ShieldCheck /><div><strong>這次沒有建立預約</strong><p>{checkout.message}</p><span>沒有扣款。請回到時段重新選擇，或聯繫農場。</span></div></div>}
@@ -356,7 +364,7 @@ export default function FarmBookingApp({ initialView = "booking" }: { initialVie
       )}
 
       {view === "mine" && <MyBookingsView identity={lineIdentity} onBack={() => changeView("booking")} />}
-      {view === "info" && <SimpleView icon={<Info />} title="交通與注意事項" intro="地址與預約制服務時間須由農場核准後才會公開。"><div className="info-list"><InfoRow icon={<MapPin />} title="集合地點" text="正式地址與導航連結尚待農場確認，不顯示推測位置。" /><InfoRow icon={<Sprout />} title="參訪準備" text="建議準備帽子、防曬用品、飲用水，並穿方便行走的包覆性鞋款。" /><InfoRow icon={<CalendarDays />} title="雨天安排" text="將依核准後的場次政策通知，不會自行假設照常或取消。" /></div></SimpleView>}
+      {view === "info" && <SimpleView icon={<Info />} title="交通與注意事項" intro="出發前先看開放時間、停車與場內安全提醒。"><div className="info-list"><InfoRow icon={<CalendarDays />} title="開放時間" text={<>週二、週三、週四 14:00–18:00 可直接預約。週五、週六、週日請先<a href="https://line.me/R/ti/p/@647hlrhw" target="_blank" rel="noreferrer">聯繫客服</a>討論並開放時段；假日時段門票加 20%。</>} /><InfoRow icon={<MapPin />} title="交通導航" text={<>請使用<a href="https://maps.app.goo.gl/mde8o1215UvvtbBu8" target="_blank" rel="noreferrer">Google Maps 農場導航</a>前往。</>} /><InfoRow icon={<Car />} title="停車" text="農場旁馬路邊可停車，請留意現場動線，不要阻擋出入口。" /><InfoRow icon={<CloudRain />} title="雨天安排" text="雨天活動照常；如遇豪雨或颱風，農場會另行通知取消。" /><InfoRow icon={<Footprints />} title="場內安全" text="進入場域會更換拖鞋。場內土地不是平整水泥地，嚴禁奔跑，請放慢腳步並小心行走。" /></div></SimpleView>}
       {view === "contact" && <SimpleView icon={<MessageCircle />} title="聯繫農場" intro="人數較多、沒有合適場次，或有特殊需求，可直接聯繫官方 LINE。"><a className="line-contact" href="https://line.me/R/ti/p/@647hlrhw" target="_blank" rel="noreferrer"><MessageCircle /><span><strong>開啟 WeGrow 官方 LINE</strong><small>@647hlrhw</small></span><ExternalLink /></a><a className="shop-link" href="https://wegrow.oen.tw/" target="_blank" rel="noreferrer">訂購當季鮮果 <ExternalLink /></a></SimpleView>}
 
       <nav className="app-bottom-nav" aria-label="主要功能">
@@ -375,7 +383,7 @@ function BackButton({ onClick }: { onClick: () => void }) { return <button class
 function ReviewRow({ icon, label, value }: { icon: React.ReactNode; label: string; value: string }) { return <div className="review-row"><span className="review-icon">{icon}</span><span><small>{label}</small><strong>{value}</strong></span><ChevronRight /></div>; }
 function NavButton({ active, icon, label, onClick }: { active: boolean; icon: React.ReactNode; label: string; onClick: () => void }) { return <button className={active ? "active" : ""} onClick={onClick}>{icon}<span>{label}</span></button>; }
 function SimpleView({ icon, title, intro, children }: { icon: React.ReactNode; title: string; intro: string; children: React.ReactNode }) { return <section className="simple-view"><div className="simple-heading"><span>{icon}</span><div><h1>{title}</h1><p>{intro}</p></div></div>{children}</section>; }
-function InfoRow({ icon, title, text }: { icon: React.ReactNode; title: string; text: string }) { return <div className="info-row"><span>{icon}</span><div><strong>{title}</strong><p>{text}</p></div></div>; }
+function InfoRow({ icon, title, text }: { icon: React.ReactNode; title: string; text: React.ReactNode }) { return <div className="info-row"><span>{icon}</span><div><strong>{title}</strong><p>{text}</p></div></div>; }
 function PriceLine({ label, value, highlight = false }: { label: string; value: number; highlight?: boolean }) { return <div className={highlight ? "price-line highlight" : "price-line"}><span>{label}</span><strong>{value < 0 ? "−" : ""}NT$ {Math.abs(value).toLocaleString()}</strong></div>; }
 
 function MyBookingsView({ identity, onBack }: { identity: LineIdentity; onBack: () => void }) {
