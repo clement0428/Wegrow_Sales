@@ -4,6 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
+    "prebuild": "node scripts/sync-build-env.mjs",
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
@@ -14,6 +15,7 @@
     "cf:seed": "wrangler d1 execute DB --local --file d1/migrations/0002_seed_dev.sql",
     "preview": "opennextjs-cloudflare build && opennextjs-cloudflare preview",
     "deploy": "opennextjs-cloudflare build && opennextjs-cloudflare deploy --env production",
+    "postdeploy": "node scripts/verify-prod-liff.mjs",
     "deploy:dev": "NEXT_PUBLIC_LIFF_ID= opennextjs-cloudflare build && opennextjs-cloudflare deploy --env=\"\"",
     "migrate:prod": "wrangler d1 migrations apply DB --remote --env production",
     "migrate:dev": "wrangler d1 migrations apply DB --remote",
