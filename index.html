@@ -3,22 +3,21 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>福農監控平台 | 企業衛星農場</title>
-  <meta name="description" content="企業認養農場專屬頁：植物攝像頭、WeGrow Orbit 澆水施肥履歷、企業衛星農場照護證明。">
+  <title>SOL-WeGrow Farm | 品牌展示</title>
+  <meta name="description" content="SOL-WeGrow Farm 高級品牌聯名展示：企業資料後台、即時影像、照護步驟、ESG 資產與體驗活動。">
   <style>
     :root {
       color-scheme: light;
-      --ink: #17211c;
-      --muted: #657169;
-      --line: #dfe8df;
-      --field: #f7f7f2;
-      --leaf: #256c46;
-      --leaf-deep: #123f2a;
-      --sun: #f0b84b;
-      --sky: #d9ecf0;
+      --ink: #141713;
+      --muted: #596258;
+      --paper: #fbfaf4;
       --white: #ffffff;
-      --radius: 8px;
-      --shadow: 0 18px 48px rgba(23, 33, 28, .12);
+      --line: #dfded4;
+      --gold: #b68a35;
+      --green: #153f2a;
+      --mist: #eef1e8;
+      --rose: #c84c41;
+      --shadow: 0 24px 80px rgba(20, 23, 19, .13);
     }
 
     * {
@@ -28,8 +27,8 @@
     body {
       margin: 0;
       font-family: "Noto Sans TC", "Microsoft JhengHei", Arial, sans-serif;
+      background: var(--paper);
       color: var(--ink);
-      background: var(--field);
       letter-spacing: 0;
     }
 
@@ -38,840 +37,1814 @@
       text-decoration: none;
     }
 
-    .shell {
-      min-height: 100vh;
-      display: grid;
-      grid-template-rows: auto 1fr;
-    }
-
-    header {
-      position: sticky;
-      top: 0;
-      z-index: 10;
-      background: rgba(246, 248, 241, .92);
-      backdrop-filter: blur(16px);
-      border-bottom: 1px solid rgba(37, 108, 70, .14);
-    }
-
     .nav {
-      width: min(1180px, calc(100% - 32px));
+      width: min(1180px, calc(100% - 36px));
+      height: 76px;
       margin: 0 auto;
-      min-height: 68px;
       display: flex;
       align-items: center;
       justify-content: space-between;
-      gap: 20px;
+      border-bottom: 1px solid rgba(20, 23, 19, .08);
+      gap: 18px;
     }
 
     .brand {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      min-width: 0;
+    }
+
+    .brand-combo {
       display: flex;
       align-items: center;
       gap: 12px;
       min-width: 0;
     }
 
-    .mark {
-      width: 38px;
-      height: 38px;
-      border-radius: 50%;
-      display: grid;
-      place-items: center;
-      background: var(--leaf);
-      color: var(--white);
-      font-weight: 800;
+    .brand-logo {
+      display: block;
+      width: auto;
+      object-fit: contain;
       flex: 0 0 auto;
     }
 
-    .brand strong {
-      display: block;
-      font-size: 17px;
-      line-height: 1.2;
+    .brand-logo.sol {
+      height: 36px;
     }
 
-    .brand span {
+    .brand-logo.wegrow {
+      height: 40px;
+    }
+
+    .brand-divider {
+      width: 1px;
+      height: 34px;
+      background: rgba(20, 23, 19, .14);
+      flex: 0 0 auto;
+    }
+
+    .brand-copy {
+      min-width: 0;
+    }
+
+    .brand-copy strong {
       display: block;
-      margin-top: 2px;
-      font-size: 12px;
+      font-size: 14px;
+      line-height: 1.1;
+    }
+
+    .brand-copy span {
+      display: block;
+      margin-top: 4px;
       color: var(--muted);
+      font-size: 12px;
       white-space: nowrap;
     }
 
-    .nav-actions {
+    .nav-links {
       display: flex;
       align-items: center;
-      gap: 10px;
-    }
-
-    .status-pill {
-      display: inline-flex;
-      align-items: center;
-      gap: 8px;
-      min-height: 36px;
-      padding: 0 12px;
-      border: 1px solid rgba(37, 108, 70, .2);
-      border-radius: 999px;
-      background: rgba(255, 255, 255, .72);
-      color: var(--leaf-deep);
+      gap: 12px;
+      color: var(--muted);
       font-size: 13px;
       white-space: nowrap;
     }
 
-    .dot {
-      width: 8px;
-      height: 8px;
-      border-radius: 50%;
-      background: #2fb265;
-      box-shadow: 0 0 0 5px rgba(47, 178, 101, .15);
+    .nav-links a {
+      border-bottom: 1px solid transparent;
+    }
+
+    .nav-links a:hover {
+      border-bottom-color: currentColor;
+    }
+
+    .lang-toggle {
+      min-height: 34px;
+      padding: 0 11px;
+      border: 1px solid var(--line);
+      background: transparent;
+      color: var(--green);
+      font: inherit;
+      font-size: 12px;
+      font-weight: 850;
+      cursor: pointer;
     }
 
     main {
-      width: min(1180px, calc(100% - 32px));
+      width: min(1180px, calc(100% - 36px));
       margin: 0 auto;
-      padding: 26px 0 42px;
+      padding: 18px 0 34px;
     }
 
     .hero {
       display: grid;
-      grid-template-columns: minmax(0, 1.42fr) minmax(320px, .88fr);
-      gap: 18px;
-      align-items: stretch;
+      grid-template-columns: 1fr;
+      gap: 26px;
+      align-items: start;
     }
 
-    .camera {
-      min-height: 620px;
-      border-radius: var(--radius);
-      overflow: hidden;
+    .image-stage {
       position: relative;
-      background: #111;
+      overflow: hidden;
+      background: var(--mist);
       box-shadow: var(--shadow);
+      aspect-ratio: 16 / 9;
+      width: 100%;
+      max-height: min(520px, calc(100svh - 220px));
+      min-height: 330px;
     }
 
-    .camera img {
+    .image-stage img {
       width: 100%;
       height: 100%;
-      min-height: 620px;
       object-fit: cover;
       display: block;
-      filter: saturate(1.04) contrast(1.02);
     }
 
-    .camera::after {
+    .image-stage::after {
       content: "";
       position: absolute;
       inset: 0;
-      background: linear-gradient(180deg, rgba(0, 0, 0, .18), rgba(0, 0, 0, .05) 42%, rgba(0, 0, 0, .55));
+      background: linear-gradient(180deg, rgba(0, 0, 0, .02), rgba(0, 0, 0, .4));
       pointer-events: none;
     }
 
-    .camera-top,
-    .camera-bottom {
+    .live-badge,
+    .client-badge {
       position: absolute;
       z-index: 2;
-      left: 22px;
-      right: 22px;
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: 12px;
-      color: var(--white);
-    }
-
-    .camera-top {
-      top: 20px;
-    }
-
-    .camera-bottom {
-      bottom: 22px;
-      align-items: end;
-    }
-
-    .live-tag,
-    .weather-tag {
       display: inline-flex;
       align-items: center;
-      min-height: 34px;
-      padding: 0 12px;
-      border-radius: 999px;
-      background: rgba(15, 29, 22, .62);
-      border: 1px solid rgba(255, 255, 255, .22);
+      min-height: 36px;
+      padding: 0 13px;
+      background: rgba(255, 255, 255, .88);
+      color: var(--green);
       font-size: 13px;
-      white-space: nowrap;
+      font-weight: 800;
     }
 
-    .live-tag {
-      gap: 8px;
+    .live-badge {
+      top: 18px;
+      left: 18px;
+      gap: 9px;
+    }
+
+    .client-badge {
+      right: 18px;
+      bottom: 18px;
     }
 
     .live-dot {
       width: 8px;
       height: 8px;
       border-radius: 50%;
-      background: #ff5f55;
-      box-shadow: 0 0 0 5px rgba(255, 95, 85, .2);
+      background: var(--rose);
+      box-shadow: 0 0 0 5px rgba(200, 76, 65, .15);
     }
 
-    .camera-title {
-      max-width: 620px;
-    }
-
-    .camera-title p {
-      margin: 0 0 10px;
-      font-size: 15px;
-      color: rgba(255, 255, 255, .82);
+    .eyebrow {
+      margin: 0 0 16px;
+      color: var(--gold);
+      font-size: 13px;
+      font-weight: 850;
+      letter-spacing: .08em;
+      text-transform: uppercase;
     }
 
     h1 {
       margin: 0;
-      font-size: clamp(36px, 6vw, 76px);
-      line-height: .95;
+      max-width: 11.5em;
+      font-size: clamp(38px, 5.2vw, 70px);
+      line-height: 1;
       font-weight: 850;
-      letter-spacing: 0;
     }
 
-    .quick-proof {
+    .hero-line {
+      max-width: 34em;
+      margin: 18px 0 0;
+      color: var(--muted);
+      font-size: 16px;
+      line-height: 1.58;
+    }
+
+    .hero-actions {
+      margin-top: 22px;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px;
+    }
+
+    .button {
+      min-height: 42px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      padding: 0 18px;
+      border: 1px solid var(--green);
+      background: var(--green);
+      color: var(--white);
+      font-size: 14px;
+      font-weight: 850;
+    }
+
+    .button.secondary {
+      background: transparent;
+      color: var(--green);
+    }
+
+    .metrics {
+      margin-top: 24px;
       display: grid;
       grid-template-columns: repeat(3, minmax(0, 1fr));
-      gap: 8px;
-      width: min(390px, 100%);
+      border-top: 1px solid var(--line);
+      border-bottom: 1px solid var(--line);
+      max-width: 680px;
     }
 
-    .proof-item {
+    .metric {
       min-height: 76px;
-      padding: 12px;
-      border-radius: var(--radius);
-      background: rgba(255, 255, 255, .9);
-      color: var(--ink);
+      padding: 14px;
+      border-right: 1px solid var(--line);
     }
 
-    .proof-item strong {
-      display: block;
-      font-size: 20px;
-      line-height: 1;
+    .metric:last-child {
+      border-right: 0;
     }
 
-    .proof-item span {
+    .metric strong {
       display: block;
-      margin-top: 8px;
+      font-size: 21px;
+      color: var(--green);
+    }
+
+    .metric span {
+      display: block;
+      margin-top: 7px;
       color: var(--muted);
       font-size: 12px;
       line-height: 1.35;
     }
 
-    .side {
+    .section {
+      margin-top: 22px;
+      padding-top: 22px;
+      border-top: 1px solid rgba(20, 23, 19, .12);
       display: grid;
-      gap: 12px;
-      align-content: stretch;
+      grid-template-columns: 190px minmax(0, 1fr);
+      gap: 24px;
+      align-items: start;
     }
 
-    .photo-pair {
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 10px;
+    .section-title h2 {
+      margin: 0;
+      font-size: 22px;
+      line-height: 1.12;
     }
 
-    .photo-card {
-      min-height: 160px;
-      border-radius: var(--radius);
-      overflow: hidden;
-      position: relative;
-      background: #d8dfd4;
+    .micro {
+      margin-top: 10px;
+      color: var(--gold);
+      font-size: 12px;
+      font-weight: 850;
+      letter-spacing: .08em;
+      text-transform: uppercase;
+    }
+
+    .service-steps {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 14px;
+    }
+
+    .step {
+      min-height: 148px;
+      padding: 18px;
+      background: var(--white);
       border: 1px solid var(--line);
     }
 
-    .photo-card img {
-      width: 100%;
-      height: 100%;
-      min-height: 160px;
-      object-fit: cover;
+    .step-number {
       display: block;
+      color: var(--gold);
+      font-size: 12px;
+      font-weight: 850;
+      margin-bottom: 18px;
     }
 
-    .photo-card span {
-      position: absolute;
-      left: 10px;
-      bottom: 10px;
+    .step strong {
+      display: block;
+      font-size: 18px;
+      line-height: 1.2;
+    }
+
+    .step p {
+      margin: 10px 0 0;
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.52;
+    }
+
+    .asset-grid {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 14px;
+    }
+
+    .asset-card {
+      min-height: 132px;
+      padding: 18px;
+      background: var(--green);
+      color: var(--white);
+      display: grid;
+      align-content: space-between;
+    }
+
+    .asset-card.light {
+      background: var(--white);
+      color: var(--ink);
+      border: 1px solid var(--line);
+    }
+
+    .asset-card strong {
+      display: block;
+      font-size: 18px;
+      line-height: 1.2;
+    }
+
+    .asset-card span {
+      display: block;
+      margin-top: 8px;
+      color: rgba(255, 255, 255, .72);
+      font-size: 13px;
+      line-height: 1.5;
+    }
+
+    .asset-card.light span {
+      color: var(--muted);
+    }
+
+    .asset-card a {
+      margin-top: 16px;
+      color: inherit;
+      font-size: 13px;
+      font-weight: 850;
+      text-transform: uppercase;
+      letter-spacing: .06em;
+    }
+
+    .experience {
+      display: grid;
+      gap: 10px;
+    }
+
+    .event {
+      display: grid;
+      grid-template-columns: 86px 1fr 76px;
+      gap: 16px;
+      align-items: center;
+      min-height: 66px;
+      padding: 10px 0;
+      border-bottom: 1px solid var(--line);
+    }
+
+    .event time {
+      color: var(--gold);
+      font-size: 15px;
+      font-weight: 850;
+    }
+
+    .event strong {
+      display: block;
+      font-size: 16px;
+    }
+
+    .event span {
+      display: block;
+      margin-top: 4px;
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.42;
+    }
+
+    .tag {
+      justify-self: end;
       display: inline-flex;
       align-items: center;
-      min-height: 28px;
+      justify-content: center;
+      min-height: 30px;
       padding: 0 10px;
-      border-radius: 999px;
-      background: rgba(16, 33, 23, .68);
-      color: var(--white);
-      font-size: 12px;
-    }
-
-    .panel {
       border: 1px solid var(--line);
-      border-radius: var(--radius);
-      background: var(--white);
-      padding: 18px;
-      box-shadow: 0 12px 28px rgba(23, 33, 28, .07);
-    }
-
-    .panel h2,
-    .panel h3 {
-      margin: 0;
-      font-size: 18px;
-      line-height: 1.25;
-    }
-
-    .panel-sub {
-      margin: 8px 0 0;
-      color: var(--muted);
-      font-size: 14px;
-      line-height: 1.55;
-    }
-
-    .adoption-card {
-      background: var(--leaf-deep);
-      color: var(--white);
-      border-color: transparent;
-    }
-
-    .adoption-card .panel-sub {
-      color: rgba(255, 255, 255, .78);
-    }
-
-    .adoption-meta {
-      margin-top: 18px;
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 10px;
-    }
-
-    .meta-box {
-      padding: 12px;
-      border-radius: var(--radius);
-      background: rgba(255, 255, 255, .1);
-      border: 1px solid rgba(255, 255, 255, .14);
-    }
-
-    .meta-box span {
-      display: block;
-      color: rgba(255, 255, 255, .72);
+      color: var(--green);
       font-size: 12px;
-      margin-bottom: 6px;
+      font-weight: 850;
     }
 
-    .meta-box strong {
+    .bond-grid {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 14px;
+    }
+
+    .bond-card {
+      min-height: 144px;
+      padding: 16px;
+      background: var(--white);
+      border: 1px solid var(--line);
+      display: grid;
+      align-content: space-between;
+    }
+
+    .plant-buddy {
+      width: 76px;
+      height: 76px;
+      position: relative;
+      display: grid;
+      place-items: end center;
+      margin-bottom: 10px;
+    }
+
+    .plant-pot {
+      width: 42px;
+      height: 24px;
+      position: relative;
+      z-index: 3;
+      background: linear-gradient(180deg, #d4a94b, #a97628);
+      border-radius: 0 0 18px 18px;
+      box-shadow: inset 0 5px 0 rgba(255, 255, 255, .22);
+    }
+
+    .plant-stem {
+      width: 7px;
+      height: calc(18px + var(--growth, 0) * 5px);
+      position: absolute;
+      left: 35px;
+      bottom: 23px;
+      z-index: 2;
+      border-radius: 999px;
+      background: linear-gradient(180deg, #4c9a55, #1f6a3e);
+      transform-origin: bottom;
+      animation: sway 3.2s ease-in-out infinite;
+    }
+
+    .plant-leaf {
+      width: calc(19px + var(--growth, 0) * 3px);
+      height: calc(12px + var(--growth, 0) * 2px);
+      position: absolute;
+      bottom: calc(39px + var(--growth, 0) * 4px);
+      z-index: 2;
+      border-radius: 100% 0 100% 0;
+      background: linear-gradient(135deg, #89c86e, #216b3d);
+      transform-origin: right bottom;
+      animation: leafPulse 2.4s ease-in-out infinite;
+    }
+
+    .plant-leaf.left {
+      left: 12px;
+      transform: rotate(-26deg);
+    }
+
+    .plant-leaf.right {
+      right: 12px;
+      transform: rotate(116deg) scaleX(-1);
+      animation-delay: .35s;
+    }
+
+    .plant-sprout {
+      width: calc(15px + var(--growth, 0) * 2px);
+      height: calc(19px + var(--growth, 0) * 2px);
+      position: absolute;
+      left: 31px;
+      bottom: calc(48px + var(--growth, 0) * 5px);
+      z-index: 2;
+      border-radius: 100% 0 100% 0;
+      background: linear-gradient(135deg, #b7df78, #2d7d48);
+      transform: rotate(45deg);
+      animation: sproutGlow 3s ease-in-out infinite;
+    }
+
+    .growth-ring {
+      position: absolute;
+      inset: 13px;
+      border: 1px solid rgba(21, 63, 42, .16);
+      border-radius: 50%;
+      background: rgba(238, 241, 232, .72);
+    }
+
+    .plant-level {
+      display: inline-flex;
+      align-items: center;
+      min-height: 26px;
+      margin-top: 12px;
+      padding: 0 9px;
+      border: 1px solid var(--line);
+      color: var(--green);
+      font-size: 12px;
+      font-weight: 850;
+    }
+
+    @keyframes sway {
+      0%, 100% { transform: rotate(-1deg); }
+      50% { transform: rotate(2deg); }
+    }
+
+    @keyframes leafPulse {
+      0%, 100% { filter: saturate(1); }
+      50% { filter: saturate(1.25) brightness(1.05); }
+    }
+
+    @keyframes sproutGlow {
+      0%, 100% { transform: rotate(45deg) scale(1); }
+      50% { transform: rotate(45deg) scale(1.08); }
+    }
+
+    .buddy {
+      width: 44px;
+      height: 44px;
+      border-radius: 50%;
+      display: grid;
+      place-items: center;
+      background: var(--mist);
+      color: var(--green);
+      font-weight: 900;
+      font-size: 20px;
+    }
+
+    .bond-card strong {
+      display: block;
       font-size: 17px;
       line-height: 1.25;
     }
 
-    .orbit-list {
-      margin: 18px 0 0;
-      display: grid;
-      gap: 12px;
-    }
-
-    .orbit-row {
-      display: grid;
-      grid-template-columns: 40px 1fr auto;
-      gap: 12px;
-      align-items: center;
-      min-height: 56px;
-      padding: 10px;
-      border: 1px solid var(--line);
-      border-radius: var(--radius);
-      background: #fbfcf8;
-    }
-
-    .orbit-icon {
-      width: 40px;
-      height: 40px;
-      border-radius: 50%;
-      display: grid;
-      place-items: center;
-      background: var(--sky);
-      color: var(--leaf-deep);
-      font-weight: 800;
-      font-size: 14px;
-    }
-
-    .orbit-row strong {
-      display: block;
-      font-size: 15px;
-      line-height: 1.25;
-    }
-
-    .orbit-row span {
-      display: block;
-      margin-top: 4px;
-      color: var(--muted);
-      font-size: 12px;
-      line-height: 1.35;
-    }
-
-    .orbit-time {
-      color: var(--leaf);
-      font-size: 12px;
-      white-space: nowrap;
-    }
-
-    .neighbor-note {
-      display: grid;
-      grid-template-columns: 52px 1fr;
-      gap: 12px;
-      align-items: center;
-      background: #fff8e8;
-      border-color: rgba(240, 184, 75, .38);
-    }
-
-    .avatar {
-      width: 52px;
-      height: 52px;
-      border-radius: 50%;
-      display: grid;
-      place-items: center;
-      background: var(--sun);
-      color: #3f2b08;
-      font-weight: 850;
-    }
-
-    .timeline {
-      margin-top: 18px;
-      display: grid;
-      gap: 0;
-      border-top: 1px solid var(--line);
-    }
-
-    .time-row {
-      display: grid;
-      grid-template-columns: 90px 1fr;
-      gap: 14px;
-      padding: 14px 0;
-      border-bottom: 1px solid var(--line);
-    }
-
-    .time-row time {
-      color: var(--leaf);
-      font-weight: 700;
-      font-size: 13px;
-    }
-
-    .time-row strong {
-      display: block;
-      font-size: 14px;
-    }
-
-    .time-row span {
-      display: block;
-      margin-top: 4px;
-      color: var(--muted);
-      font-size: 13px;
-      line-height: 1.45;
-    }
-
-    .section {
-      margin-top: 18px;
-      display: grid;
-      grid-template-columns: .95fr 1.05fr;
-      gap: 18px;
-      align-items: stretch;
-    }
-
-    .principle-grid,
-    .promise-grid {
-      margin-top: 16px;
-      display: grid;
-      gap: 10px;
-    }
-
-    .principle-grid {
-      grid-template-columns: repeat(3, minmax(0, 1fr));
-    }
-
-    .promise-grid {
-      grid-template-columns: repeat(2, minmax(0, 1fr));
-    }
-
-    .principle,
-    .promise {
-      padding: 14px;
-      min-height: 104px;
-      border-radius: var(--radius);
-      background: #f7faf4;
-      border: 1px solid var(--line);
-    }
-
-    .principle strong,
-    .promise strong {
-      display: block;
-      font-size: 15px;
-    }
-
-    .principle span,
-    .promise span {
+    .bond-card span {
       display: block;
       margin-top: 8px;
       color: var(--muted);
       font-size: 13px;
-      line-height: 1.45;
+      line-height: 1.42;
     }
 
-    .cta {
-      min-height: 100%;
-      display: grid;
-      align-content: center;
-      background: linear-gradient(135deg, #183f2c, #2b6d49);
+    .admin {
+      display: none;
+      background: #111711;
       color: var(--white);
+      padding: 24px;
+      box-shadow: var(--shadow);
     }
 
-    .cta p {
+    .admin:target {
+      display: block;
+    }
+
+    .admin-head {
+      display: flex;
+      align-items: start;
+      justify-content: space-between;
+      gap: 16px;
+    }
+
+    .admin-close {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 34px;
+      padding: 0 11px;
+      border: 1px solid rgba(255, 255, 255, .22);
+      color: rgba(255, 255, 255, .82);
+      font-size: 12px;
+      font-weight: 850;
+      white-space: nowrap;
+    }
+
+    .admin h2 {
+      margin: 0;
+      font-size: 24px;
+    }
+
+    .admin-note {
       margin: 10px 0 0;
-      color: rgba(255, 255, 255, .78);
-      line-height: 1.55;
+      color: rgba(255, 255, 255, .68);
+      font-size: 14px;
+      line-height: 1.5;
     }
 
-    .buttons {
-      margin-top: 20px;
+    .admin-grid {
+      margin-top: 18px;
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 14px;
+    }
+
+    label {
+      display: grid;
+      gap: 7px;
+      color: rgba(255, 255, 255, .72);
+      font-size: 12px;
+      font-weight: 800;
+    }
+
+    input,
+    textarea,
+    select {
+      width: 100%;
+      min-height: 42px;
+      border: 1px solid rgba(255, 255, 255, .16);
+      background: rgba(255, 255, 255, .08);
+      color: var(--white);
+      padding: 10px 12px;
+      font: inherit;
+      outline: none;
+    }
+
+    textarea {
+      min-height: 92px;
+      resize: vertical;
+      grid-column: span 2;
+    }
+
+    input:focus,
+    textarea:focus,
+    select:focus {
+      border-color: var(--gold);
+    }
+
+    .admin-actions {
+      margin-top: 18px;
       display: flex;
       flex-wrap: wrap;
       gap: 10px;
     }
 
-    .button {
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
+    .admin-actions button {
       min-height: 42px;
-      padding: 0 16px;
-      border-radius: 999px;
-      border: 1px solid rgba(255, 255, 255, .28);
+      border: 1px solid rgba(255, 255, 255, .25);
       background: var(--white);
-      color: var(--leaf-deep);
-      font-weight: 700;
-      font-size: 14px;
+      color: var(--green);
+      padding: 0 15px;
+      font: inherit;
+      font-weight: 850;
+      cursor: pointer;
     }
 
-    .button.secondary {
+    .admin-actions button.secondary {
       background: transparent;
       color: var(--white);
     }
 
+    .admin-preview {
+      margin-top: 22px;
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 10px;
+    }
+
+    .admin-preview div {
+      min-height: 74px;
+      padding: 12px;
+      background: rgba(255, 255, 255, .08);
+      border: 1px solid rgba(255, 255, 255, .12);
+    }
+
+    .admin-preview span {
+      display: block;
+      color: rgba(255, 255, 255, .55);
+      font-size: 11px;
+      margin-bottom: 6px;
+    }
+
+    .admin-preview strong {
+      display: block;
+      font-size: 14px;
+      line-height: 1.35;
+    }
+
+    .portal {
+      margin-top: 34px;
+      padding-top: 26px;
+      border-top: 1px solid rgba(255, 255, 255, .16);
+    }
+
+    .portal-head h3 {
+      margin: 0;
+      font-size: 19px;
+    }
+
+    .portal-note {
+      margin: 8px 0 0;
+      color: rgba(255, 255, 255, .62);
+      font-size: 13px;
+      line-height: 1.5;
+    }
+
+    .portal-login {
+      margin-top: 16px;
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 12px;
+      align-items: end;
+    }
+
+    .portal-login button {
+      min-height: 42px;
+      border: 1px solid rgba(255, 255, 255, .25);
+      background: var(--gold);
+      color: var(--green);
+      padding: 0 15px;
+      font: inherit;
+      font-weight: 850;
+      cursor: pointer;
+    }
+
+    .portal-status {
+      margin-top: 12px;
+      font-size: 13px;
+      line-height: 1.5;
+      color: rgba(255, 255, 255, .78);
+    }
+
+    .portal-status.error {
+      color: var(--rose);
+    }
+
+    .portal-session {
+      margin-top: 16px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
+
+    .portal-session strong {
+      font-size: 14px;
+    }
+
+    .portal-session button {
+      min-height: 36px;
+      border: 1px solid rgba(255, 255, 255, .25);
+      background: transparent;
+      color: var(--white);
+      padding: 0 13px;
+      font: inherit;
+      font-weight: 800;
+      cursor: pointer;
+    }
+
+    .portal-photos {
+      margin-top: 18px;
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 12px;
+    }
+
+    .portal-photo {
+      background: rgba(255, 255, 255, .06);
+      border: 1px solid rgba(255, 255, 255, .12);
+      overflow: hidden;
+    }
+
+    .portal-photo .frame {
+      position: relative;
+      aspect-ratio: 4 / 3;
+      background: rgba(255, 255, 255, .04);
+      display: grid;
+      place-items: center;
+    }
+
+    .portal-photo img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      display: block;
+    }
+
+    .portal-photo .frame .spinner {
+      font-size: 11px;
+      color: rgba(255, 255, 255, .5);
+    }
+
+    .portal-photo .meta {
+      padding: 8px 10px;
+      font-size: 11px;
+      color: rgba(255, 255, 255, .6);
+    }
+
+    @media (max-width: 720px) {
+      .portal-login,
+      .portal-photos {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    .gallery {
+      margin-top: 22px;
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 14px;
+    }
+
+    .gallery img {
+      width: 100%;
+      height: 190px;
+      object-fit: cover;
+      display: block;
+      background: var(--mist);
+    }
+
     footer {
-      width: min(1180px, calc(100% - 32px));
+      width: min(1180px, calc(100% - 36px));
       margin: 0 auto;
-      padding: 18px 0 34px;
+      padding: 22px 0 34px;
+      border-top: 1px solid rgba(20, 23, 19, .12);
       color: var(--muted);
-      font-size: 12px;
       display: flex;
       justify-content: space-between;
-      gap: 14px;
-      border-top: 1px solid var(--line);
+      gap: 18px;
+      font-size: 12px;
     }
 
     @media (max-width: 980px) {
-      .hero,
       .section {
         grid-template-columns: 1fr;
       }
 
-      .camera,
-      .camera img {
-        min-height: 520px;
+      .service-steps,
+      .asset-grid,
+      .bond-grid,
+      .admin-grid,
+      .admin-preview {
+        grid-template-columns: 1fr;
+      }
+
+      textarea {
+        grid-column: auto;
       }
     }
 
-    @media (max-width: 720px) {
-      .nav {
+    @media (max-width: 680px) {
+      .nav,
+      main,
+      footer {
         width: min(100% - 24px, 1180px);
-        min-height: 62px;
       }
 
-      .brand span,
-      .weather-tag {
+      .nav {
+        height: 68px;
+      }
+
+      .brand {
+        gap: 10px;
+      }
+
+      .brand-combo {
+        gap: 8px;
+      }
+
+      .brand-logo.sol {
+        height: 30px;
+      }
+
+      .brand-logo.wegrow {
+        height: 32px;
+      }
+
+      .brand-divider {
+        height: 28px;
+      }
+
+      .brand-copy strong {
+        font-size: 12px;
+      }
+
+      .brand-copy span {
+        font-size: 11px;
+      }
+
+      .brand-copy {
+        display: none;
+      }
+
+      .nav-links {
+        display: flex;
+      }
+
+      .nav-links a {
         display: none;
       }
 
       main {
-        width: min(100% - 24px, 1180px);
         padding-top: 14px;
       }
 
-      .camera,
-      .camera img {
-        min-height: 520px;
+      .hero {
+        gap: 22px;
       }
 
-      .camera-top,
-      .camera-bottom {
-        left: 14px;
-        right: 14px;
+      .image-stage {
+        aspect-ratio: 4 / 3;
+        min-height: 0;
+        max-height: none;
       }
 
-      .camera-bottom {
-        display: grid;
-        gap: 18px;
+      .live-badge,
+      .client-badge {
+        min-height: 32px;
+        padding: 0 11px;
+        font-size: 12px;
       }
 
-      .quick-proof,
-      .photo-pair,
-      .principle-grid,
-      .promise-grid {
+      .live-badge {
+        top: 12px;
+        left: 12px;
+      }
+
+      .client-badge {
+        right: 12px;
+        bottom: 12px;
+      }
+
+      .eyebrow {
+        margin-bottom: 12px;
+      }
+
+      h1 {
+        max-width: 9.8em;
+        font-size: clamp(36px, 12vw, 52px);
+      }
+
+      .hero-line {
+        margin-top: 14px;
+        font-size: 15px;
+      }
+
+      .button {
+        width: 100%;
+      }
+
+      .metrics,
+      .gallery {
         grid-template-columns: 1fr;
       }
 
-      .adoption-meta {
+      .metric {
+        border-right: 0;
+        border-bottom: 1px solid var(--line);
+      }
+
+      .metric:last-child {
+        border-bottom: 0;
+      }
+
+      .event {
         grid-template-columns: 1fr;
       }
 
-      .orbit-row {
-        grid-template-columns: 40px 1fr;
-      }
-
-      .orbit-time {
-        grid-column: 2;
+      .tag {
+        justify-self: start;
       }
 
       footer {
-        width: min(100% - 24px, 1180px);
         display: block;
       }
     }
   </style>
 </head>
 <body>
-  <div class="shell">
+  <div class="page">
     <header>
-      <nav class="nav" aria-label="主要導覽">
-        <a class="brand" href="#top" aria-label="福農監控平台首頁">
-          <span class="mark">福</span>
-          <span>
-            <strong>福農監控平台</strong>
-            <span>企業衛星農場</span>
+      <nav class="nav" aria-label="主導覽">
+        <a class="brand" href="#top" aria-label="SOL-WeGrow Farm 首頁">
+          <span class="brand-combo" aria-hidden="true">
+            <img class="brand-logo sol" src="assets/brand/sol-logo.png" alt="">
+            <span class="brand-divider"></span>
+            <img class="brand-logo wegrow" src="assets/brand/wegrow-logo.png" alt="">
+          </span>
+          <span class="brand-copy">
+            <strong>SOL-WeGrow Farm</strong>
+            <span data-i18n="brandSub">由 WeGrow Orbit 驅動</span>
           </span>
         </a>
-        <div class="nav-actions">
-          <span class="status-pill"><span class="dot"></span>如鄰農場連線中</span>
+        <div class="nav-links">
+          <a href="#care" data-i18n="navCare">照護</a>
+          <a href="#asset" data-i18n="navAsset">ESG</a>
+          <a href="#experience" data-i18n="navExperience">活動</a>
+          <a href="calculator.html" data-i18n="navCost">費用試算</a>
+          <a href="payment-flow.html">金流架構</a>
+          <a href="#admin" data-i18n="navAdmin">後台</a>
+          <button class="lang-toggle" id="langToggle" type="button" aria-label="切換語言">EN</button>
         </div>
       </nav>
     </header>
 
     <main id="top">
-      <section class="hero" aria-label="企業認養農場即時狀態">
-        <div class="camera">
-          <img src="assets/greenhouse-room.jpg" alt="麻豆一場自有溫室植物攝像頭畫面">
-          <div class="camera-top">
-            <span class="live-tag"><span class="live-dot"></span>LIVE 植物攝像頭</span>
-            <span class="weather-tag">麻豆一場 · A 區 · 28.4°C · RH 72%</span>
+      <section class="hero" aria-label="即時溫室影像">
+        <div class="image-stage">
+          <img src="assets/greenhouse-room.jpg" alt="麻豆一場自有溫室 live 影像">
+          <span class="live-badge"><span class="live-dot"></span><span data-i18n="liveBadge">即時</span></span>
+          <span class="client-badge" data-bind="companyName">SOL 集團</span>
+        </div>
+
+        <div>
+          <p class="eyebrow" data-i18n="eyebrow">永續、科技、體驗</p>
+          <h1 data-i18n="heroTitle">把企業 ESG 變成看得見的農場體驗。</h1>
+          <p class="hero-line" data-i18n="heroLine">SOL-WeGrow Farm 連結即時植物影像、WeGrow Orbit 照護履歷與員工參與活動，讓永續不只是一份報告。</p>
+          <div class="hero-actions">
+            <a class="button" href="#admin" data-i18n="heroCtaAdmin">輸入企業資料</a>
+            <a class="button secondary" href="#experience" data-i18n="heroCtaExperience">安排體驗活動</a>
+            <a class="button secondary" href="calculator.html" data-i18n="heroCtaCost">試算加購費用</a>
+            <a class="button secondary" href="payment-flow.html">金流架構</a>
           </div>
-          <div class="camera-bottom">
-            <div class="camera-title">
-              <p>乾淨、好逛、會被分享的企業認養農場。</p>
-              <h1>如鄰農場，看得到照護。</h1>
+          <div class="metrics" aria-label="認養摘要">
+            <div class="metric">
+              <strong>ESG</strong>
+              <span data-i18n="metricEsg">可下載成果與認養紀錄</span>
             </div>
-            <div class="quick-proof" aria-label="今日摘要">
-              <div class="proof-item">
-                <strong>120</strong>
-                <span>認養株數</span>
-              </div>
-              <div class="proof-item">
-                <strong>2</strong>
-                <span>今日 Orbit 照護紀錄</span>
-              </div>
-              <div class="proof-item">
-                <strong>98%</strong>
-                <span>本週照護準時率</span>
-              </div>
+            <div class="metric">
+              <strong>Orbit</strong>
+              <span data-i18n="metricOrbit">澆水、施肥、巡檢履歷</span>
+            </div>
+            <div class="metric">
+              <strong data-i18n="metricLiveTitle">即時</strong>
+              <span data-i18n="metricLive">線上看田與線下農場日</span>
             </div>
           </div>
         </div>
+      </section>
 
-        <aside class="side" aria-label="認養與 WeGrow Orbit 履歷">
-          <section class="panel adoption-card">
-            <h2>企業衛星農場認養專區</h2>
-            <p class="panel-sub">把自有溫室、企業合約與 Orbit 履歷放在同一個乾淨頁面。</p>
-            <div class="adoption-meta">
-              <div class="meta-box">
-                <span>認養期間</span>
-                <strong>2026.07 - 2027.06</strong>
-              </div>
-              <div class="meta-box">
-                <span>照護模式</span>
-                <strong>WeGrow Orbit 履歷</strong>
-              </div>
-              <div class="meta-box">
-                <span>作物</span>
-                <strong>麻豆一場草莓 / 溫室作物</strong>
-              </div>
-              <div class="meta-box">
-                <span>公開狀態</span>
-                <strong>企業可分享</strong>
-              </div>
-            </div>
-          </section>
+      <section class="section" id="care" aria-label="今日照護">
+        <div class="section-title">
+          <h2 data-i18n="careTitle">今日照護</h2>
+        </div>
+        <div class="service-steps">
+          <article class="step">
+            <span class="step-number">01 · 08:20</span>
+            <strong data-i18n="care1Title">微量補水</strong>
+            <p data-i18n="care1Text">依根區乾濕狀態補水，每株約 180 mL。</p>
+          </article>
+          <article class="step">
+            <span class="step-number">02 · 09:05</span>
+            <strong data-i18n="care2Title">低 EC 營養液</strong>
+            <p data-i18n="care2Text">保留肥料、濃度、區域與操作人員。</p>
+          </article>
+          <article class="step">
+            <span class="step-number">03 · 10:10</span>
+            <strong data-i18n="care3Title">葉面巡檢</strong>
+            <p data-i18n="care3Text">確認葉片、果實與滴灌線，無急迫病蟲害。</p>
+          </article>
+        </div>
+      </section>
 
-          <section class="panel">
-            <h3>今日 WeGrow Orbit 履歷</h3>
-            <p class="panel-sub">企業客戶只看必要資訊：澆水、施肥、巡場。</p>
-            <div class="orbit-list">
-              <div class="orbit-row">
-                <div class="orbit-icon">水</div>
-                <div>
-                  <strong>A 區微量補水</strong>
-                  <span>每株 180 mL，依乾濕狀態補水</span>
-                </div>
-                <div class="orbit-time">08:20</div>
-              </div>
-              <div class="orbit-row">
-                <div class="orbit-icon">肥</div>
-                <div>
-                  <strong>低 EC 營養液</strong>
-                  <span>依 Orbit 配方紀錄，避免雨後鹽分累積</span>
-                </div>
-                <div class="orbit-time">09:05</div>
-              </div>
-              <div class="orbit-row">
-                <div class="orbit-icon">巡</div>
-                <div>
-                  <strong>葉面與根區巡檢</strong>
-                  <span>未見急迫病蟲害，明早再巡</span>
-                </div>
-                <div class="orbit-time">10:10</div>
-              </div>
-            </div>
-          </section>
-
-          <section class="panel neighbor-note">
-            <div class="avatar">農</div>
+      <section class="section" id="asset" aria-label="企業 ESG 品牌資產">
+        <div class="section-title">
+          <h2 data-i18n="assetTitle">ESG 資產</h2>
+        </div>
+        <div class="asset-grid">
+          <article class="asset-card">
             <div>
-              <h3>今天像鄰居一樣回報</h3>
-              <p class="panel-sub">「早上有補水，葉片挺，溫室通風正常。企業認養區今天狀態穩。」</p>
+              <strong data-i18n="asset1Title">認養規劃 Excel</strong>
+              <span data-i18n="asset1Text">期程、活動、案例、執行節點。</span>
             </div>
-          </section>
-
-          <div class="photo-pair" aria-label="自有農場照片">
-            <div class="photo-card">
-              <img src="assets/satellite-farm.jpg" alt="麻豆一場企業衛星農場空拍照片">
-              <span>衛星農場</span>
+            <a href="outputs/enterprise_adoption/亞果企業認養_甘特圖_國際案例15.xlsx" data-i18n="asset1Link">下載規劃表</a>
+          </article>
+          <article class="asset-card light">
+            <div>
+              <strong data-i18n="asset2Title">ESG 視覺預覽</strong>
+              <span data-i18n="asset2Text">提案、簡報、企業內部公告。</span>
             </div>
-            <div class="photo-card">
-              <img src="assets/strawberry-close.jpg" alt="麻豆一場草莓收成照片">
-              <span>流量畫面</span>
+            <a href="outputs/enterprise_adoption/gantt_preview.png" data-i18n="asset2Link">查看預覽圖</a>
+          </article>
+          <article class="asset-card light">
+            <div>
+              <strong data-i18n="asset3Title">加購費用試算</strong>
+              <span data-i18n="asset3Text">物流、加工、設計費一頁估算。</span>
             </div>
-          </div>
-        </aside>
+            <a href="calculator.html" data-i18n="asset3Link">開啟計算機</a>
+          </article>
+        </div>
       </section>
 
-      <section class="section" aria-label="認養承諾與照護時間線">
-        <div class="panel">
-          <h2>三個設計元素</h2>
-          <p class="panel-sub">這頁不是農業後台，而是企業客戶願意打開、願意轉傳、看完能安心的認養入口。</p>
-          <div class="principle-grid">
-            <div class="principle">
-              <strong>乾淨</strong>
-              <span>第一屏只放照片、認養狀態、三筆照護履歷。</span>
-            </div>
-            <div class="principle">
-              <strong>體驗</strong>
-              <span>用自有溫室照與像鄰居回報的語氣，降低距離感。</span>
-            </div>
-            <div class="principle">
-              <strong>流量</strong>
-              <span>草莓、空拍、認養成果可以直接轉成社群素材。</span>
-            </div>
-          </div>
+      <section class="section" id="experience" aria-label="體驗活動時間線">
+        <div class="section-title">
+          <h2 data-i18n="experienceTitle">體驗活動</h2>
         </div>
-
-        <div class="panel">
-          <h2>企業認養只保留四個承諾</h2>
-          <p class="panel-sub">把技術藏在背後，把可信任的證據放在前面。</p>
-          <div class="promise-grid">
-            <div class="promise">
-              <strong>看得到植物</strong>
-              <span>攝像頭作為第一入口，企業客戶不用登入複雜後台。</span>
+        <div class="experience">
+          <div class="event">
+            <time>07/05</time>
+            <div>
+              <strong data-i18n="event1Title">線上認養開場</strong>
+              <span data-i18n="event1Text">即時影像、認養區位置、照護履歷。</span>
             </div>
-            <div class="promise">
-              <strong>查得到照護</strong>
-              <span>澆水、施肥、巡場來自 WeGrow Orbit 履歷。</span>
-            </div>
-            <div class="promise">
-              <strong>說得出影響力</strong>
-              <span>認養株數、照護準時率、月報可支援 CSR/ESG 對外溝通。</span>
-            </div>
-            <div class="promise">
-              <strong>感覺像鄰居</strong>
-              <span>不是冷冰冰數據牆，而是每天有人看顧的在地農場。</span>
-            </div>
+            <span class="tag" data-i18n="online">線上</span>
           </div>
-        </div>
-
-        <div class="panel">
-          <h2>最近照護時間線</h2>
-          <p class="panel-sub">企業可以一眼知道這些植物今天不是被放著，而是被照顧著。</p>
-          <div class="timeline">
-            <div class="time-row">
-              <time>今天 10:10</time>
-              <div>
-                <strong>完成認養區巡場</strong>
-                <span>葉面、根區與滴灌線正常，無需企業端處理。</span>
-              </div>
+          <div class="event">
+            <time>08/16</time>
+            <div>
+              <strong data-i18n="event2Title">員工遠端看田</strong>
+              <span data-i18n="event2Text">用三分鐘看見今天植物狀態。</span>
             </div>
-            <div class="time-row">
-              <time>今天 09:05</time>
-              <div>
-                <strong>施肥履歷寫入 Orbit</strong>
-                <span>保留配方、區域、時間與操作人員，可輸出月報。</span>
-              </div>
+            <span class="tag" data-i18n="online">線上</span>
+          </div>
+          <div class="event">
+            <time>10/18</time>
+            <div>
+              <strong data-i18n="event3Title">農場日</strong>
+              <span data-i18n="event3Text">導覽、採果、合照、員工體驗。</span>
             </div>
-            <div class="time-row">
-              <time>今天 08:20</time>
-              <div>
-                <strong>依濕度狀態補水</strong>
-                <span>避免只照時間表灌溉，改以植株狀態與根區紀錄判斷。</span>
-              </div>
+            <span class="tag" data-i18n="offline">線下</span>
+          </div>
+          <div class="event">
+            <time>12/20</time>
+            <div>
+              <strong data-i18n="event4Title">年度成果回顧</strong>
+              <span data-i18n="event4Text">成果、照片、數據、明年合作建議。</span>
             </div>
+            <span class="tag" data-i18n="online">線上</span>
           </div>
         </div>
       </section>
 
-      <section class="section" aria-label="企業行動">
-        <div class="panel cta">
-          <h2>企業認養，不只是贊助。</h2>
-          <p>這是一個可以看、可以查、可以分享的農場參與證明。福農監控平台把衛星農場、企業合約與 WeGrow Orbit 履歷合在同一個極簡頁面。</p>
-          <div class="buttons">
-            <a class="button" href="#top">查看即時農場</a>
-            <a class="button secondary" href="outputs/enterprise_adoption/亞果企業認養_甘特圖_國際案例15.xlsx">下載認養規劃</a>
-          </div>
+      <section class="section" aria-label="農場陪伴計畫">
+        <div class="section-title">
+          <h2 data-i18n="companionTitle">農場陪伴計畫</h2>
         </div>
-        <div class="panel">
-          <h2>下一版可接真實資料</h2>
-          <p class="panel-sub">目前頁面已預留攝像頭、Orbit 履歷與企業合約欄位。正式串接時，只需把示意資料換成 API 或攝影機串流。</p>
-          <div class="orbit-list">
-            <div class="orbit-row">
-              <div class="orbit-icon">CAM</div>
-              <div>
-                <strong>攝像頭來源</strong>
-                <span>替換為企業認養區 RTSP/HLS/iframe 串流。</span>
-              </div>
-              <div class="orbit-time">ready</div>
+        <div class="bond-grid">
+          <article class="bond-card">
+            <div class="plant-buddy" id="plantBuddy" aria-label="會長大的小植物">
+              <div class="growth-ring"></div>
+              <div class="plant-stem"></div>
+              <div class="plant-leaf left"></div>
+              <div class="plant-leaf right"></div>
+              <div class="plant-sprout"></div>
+              <div class="plant-pot"></div>
             </div>
-            <div class="orbit-row">
-              <div class="orbit-icon">API</div>
-              <div>
-                <strong>WeGrow Orbit 履歷</strong>
-                <span>串接澆水、施肥、巡場、病蟲害紀錄。</span>
-              </div>
-              <div class="orbit-time">ready</div>
+            <div>
+              <strong data-i18n="buddyTitle">小葉夥伴</strong>
+              <span data-i18n="buddyText">企業自己的小植物會隨照護紀錄慢慢長大，成為員工回來看的自然理由。</span>
+              <span class="plant-level" id="plantLevel">Lv. 1</span>
             </div>
-            <div class="orbit-row">
-              <div class="orbit-icon">PDF</div>
-              <div>
-                <strong>企業月報</strong>
-                <span>認養成果、照片、照護紀錄與 CSR 摘要。</span>
-              </div>
-              <div class="orbit-time">ready</div>
+          </article>
+          <article class="bond-card">
+            <div class="buddy">信</div>
+            <div>
+              <strong data-i18n="postcardTitle">農場明信片</strong>
+              <span data-i18n="postcardText">每次照護完成，自動產生一張可分享的今日明信片。</span>
             </div>
-          </div>
+          </article>
+          <article class="bond-card">
+            <div class="buddy">果</div>
+            <div>
+              <strong data-i18n="harvestTitle">收成倒數</strong>
+              <span data-i18n="harvestText">把採果日變成企業員工期待的共同事件。</span>
+            </div>
+          </article>
         </div>
       </section>
+
+      <section class="admin" id="admin" aria-label="企業資料後台">
+        <div class="admin-head">
+          <div>
+            <h2 data-i18n="adminTitle">企業資料後台</h2>
+            <p class="admin-note" data-i18n="adminNote">Demo 版資料會存在這台電腦的瀏覽器 localStorage，可即時更新前台顯示。</p>
+          </div>
+          <a class="admin-close" href="#top" data-i18n="adminClose">關閉</a>
+        </div>
+
+        <form id="companyForm">
+          <div class="admin-grid">
+            <label>
+              <span data-i18n="fieldCompany">企業名稱</span>
+              <input data-field="companyName" name="companyName" autocomplete="organization">
+            </label>
+            <label>
+              <span data-i18n="fieldContact">聯絡人</span>
+              <input data-field="contactName" name="contactName" autocomplete="name">
+            </label>
+            <label>
+              <span data-i18n="fieldCount">認養株數</span>
+              <input data-field="adoptionCount" name="adoptionCount" inputmode="numeric">
+            </label>
+            <label>
+              <span data-i18n="fieldPhone">電話</span>
+              <input data-field="phone" name="phone" autocomplete="tel">
+            </label>
+            <label>
+              Email
+              <input data-field="email" name="email" autocomplete="email">
+            </label>
+            <label>
+              <span data-i18n="fieldPeriod">認養期間</span>
+              <input data-field="period" name="period">
+            </label>
+            <label>
+              <span data-i18n="fieldAddress">地址</span>
+              <input data-field="address" name="address" autocomplete="street-address">
+            </label>
+            <label>
+              <span data-i18n="fieldOnline">線上活動偏好</span>
+              <select data-field="onlineEvent" name="onlineEvent">
+                <option value="直播看田">直播看田</option>
+                <option value="員工線上導覽">員工線上導覽</option>
+                <option value="ESG 月報直播">ESG 月報直播</option>
+              </select>
+            </label>
+            <label>
+              <span data-i18n="fieldOffline">線下活動偏好</span>
+              <select data-field="offlineEvent" name="offlineEvent">
+                <option value="農場日">農場日</option>
+                <option value="採果體驗">採果體驗</option>
+                <option value="親子永續活動">親子永續活動</option>
+              </select>
+            </label>
+            <label>
+              <span data-i18n="fieldNotes">備註</span>
+              <textarea data-field="notes" name="notes"></textarea>
+            </label>
+          </div>
+
+          <div class="admin-actions">
+            <button type="submit" data-i18n="saveBtn">儲存企業資料</button>
+            <button class="secondary" type="button" id="resetDemo" data-i18n="resetBtn">恢復 Demo 資料</button>
+          </div>
+        </form>
+
+        <div class="admin-preview" aria-label="企業資料預覽">
+          <div>
+            <span data-i18n="previewCompany">企業</span>
+            <strong data-bind="companyName">SOL 集團</strong>
+          </div>
+          <div>
+            <span data-i18n="previewContact">聯絡人</span>
+            <strong data-bind="contactName">林小姐</strong>
+          </div>
+          <div>
+            <span data-i18n="previewPhone">電話</span>
+            <strong data-bind="phone">02-0000-0000</strong>
+          </div>
+          <div>
+            <span data-i18n="previewAddress">地址</span>
+            <strong data-bind="address">台北市信義區</strong>
+          </div>
+        </div>
+
+        <div class="portal" aria-label="認養客戶照片查看">
+          <div class="portal-head">
+            <h3 data-i18n="portalTitle">認養客戶：查看農場照片</h3>
+            <p class="portal-note" data-i18n="portalNote">請用威果管理員開通的帳號登入，只會看到您企業已認養且有效的農場照片。這不是Demo，會實際呼叫 WeGrow Orbit 後端。</p>
+          </div>
+
+          <form id="portalLoginForm" class="portal-login" data-state="logged-out">
+            <label>
+              <span data-i18n="portalEmail">帳號 Email</span>
+              <input type="email" id="portalEmail" name="portalEmail" autocomplete="username" required>
+            </label>
+            <label>
+              <span data-i18n="portalPassword">密碼</span>
+              <input type="password" id="portalPassword" name="portalPassword" autocomplete="current-password" required>
+            </label>
+            <button type="submit" data-i18n="portalLoginBtn">登入查看照片</button>
+          </form>
+
+          <p class="portal-status" id="portalStatus" role="status" aria-live="polite"></p>
+
+          <div class="portal-session" id="portalSession" hidden>
+            <strong id="portalOrgName"></strong>
+            <button type="button" id="portalLogoutBtn" data-i18n="portalLogoutBtn">登出</button>
+          </div>
+
+          <div class="portal-photos" id="portalPhotos" aria-live="polite"></div>
+        </div>
+      </section>
+
+      <div class="gallery" aria-label="品牌照片">
+        <img src="assets/satellite-farm.jpg" alt="麻豆一場衛星農場空拍">
+        <img src="assets/strawberry-close.jpg" alt="麻豆一場草莓收成">
+      </div>
     </main>
 
     <footer>
-      <span>福農監控平台 | 企業衛星農場</span>
-      <span>Prototype build for enterprise adoption experience</span>
+      <span>SOL-WeGrow Farm</span>
+      <span data-i18n="footerSub">品牌展示 · 由 WeGrow Orbit 驅動</span>
     </footer>
   </div>
+
+  <script>
+    const i18n = {
+      zh: {
+        title: "SOL-WeGrow Farm | 品牌展示",
+        brandSub: "由 WeGrow Orbit 驅動",
+        navCare: "照護",
+        navAsset: "ESG",
+        navExperience: "活動",
+        navCost: "費用試算",
+        navAdmin: "後台",
+        liveBadge: "即時",
+        eyebrow: "永續、科技、體驗",
+        heroTitle: "把企業 ESG 變成看得見的農場體驗。",
+        heroLine: "SOL-WeGrow Farm 連結即時植物影像、WeGrow Orbit 照護履歷與員工參與活動，讓永續不只是一份報告。",
+        heroCtaAdmin: "輸入企業資料",
+        heroCtaExperience: "安排體驗活動",
+        heroCtaCost: "試算加購費用",
+        metricEsg: "可下載成果與認養紀錄",
+        metricOrbit: "澆水、施肥、巡檢履歷",
+        metricLiveTitle: "即時",
+        metricLive: "線上看田與線下農場日",
+        careTitle: "今日照護",
+        care1Title: "微量補水",
+        care1Text: "依根區乾濕狀態補水，每株約 180 mL。",
+        care2Title: "低 EC 營養液",
+        care2Text: "保留肥料、濃度、區域與操作人員。",
+        care3Title: "葉面巡檢",
+        care3Text: "確認葉片、果實與滴灌線，無急迫病蟲害。",
+        assetTitle: "ESG 資產",
+        asset1Title: "認養規劃 Excel",
+        asset1Text: "期程、活動、案例、執行節點。",
+        asset1Link: "下載規劃表",
+        asset2Title: "ESG 視覺預覽",
+        asset2Text: "提案、簡報、企業內部公告。",
+        asset2Link: "查看預覽圖",
+        asset3Title: "加購費用試算",
+        asset3Text: "物流、加工、設計費一頁估算。",
+        asset3Link: "開啟計算機",
+        experienceTitle: "體驗活動",
+        event1Title: "線上認養開場",
+        event1Text: "即時影像、認養區位置、照護履歷。",
+        event2Title: "員工遠端看田",
+        event2Text: "用三分鐘看見今天植物狀態。",
+        event3Title: "農場日",
+        event3Text: "導覽、採果、合照、員工體驗。",
+        event4Title: "年度成果回顧",
+        event4Text: "成果、照片、數據、明年合作建議。",
+        online: "線上",
+        offline: "線下",
+        companionTitle: "農場陪伴計畫",
+        buddyTitle: "小葉夥伴",
+        buddyText: "企業自己的小植物會隨照護紀錄慢慢長大，成為員工回來看的自然理由。",
+        postcardTitle: "農場明信片",
+        postcardText: "每次照護完成，自動產生一張可分享的今日明信片。",
+        harvestTitle: "收成倒數",
+        harvestText: "把採果日變成企業員工期待的共同事件。",
+        adminTitle: "企業資料後台",
+        adminNote: "Demo 版資料會存在這台電腦的瀏覽器 localStorage，可即時更新前台顯示。",
+        adminClose: "關閉",
+        fieldCompany: "企業名稱",
+        fieldContact: "聯絡人",
+        fieldCount: "認養株數",
+        fieldPhone: "電話",
+        fieldPeriod: "認養期間",
+        fieldAddress: "地址",
+        fieldOnline: "線上活動偏好",
+        fieldOffline: "線下活動偏好",
+        fieldNotes: "備註",
+        saveBtn: "儲存企業資料",
+        resetBtn: "恢復 Demo 資料",
+        previewCompany: "企業",
+        previewContact: "聯絡人",
+        previewPhone: "電話",
+        previewAddress: "地址",
+        portalTitle: "認養客戶：查看農場照片",
+        portalNote: "請用威果管理員開通的帳號登入，只會看到您企業已認養且有效的農場照片。這不是Demo，會實際呼叫 WeGrow Orbit 後端。",
+        portalEmail: "帳號 Email",
+        portalPassword: "密碼",
+        portalLoginBtn: "登入查看照片",
+        portalLogoutBtn: "登出",
+        portalStatusLoggingIn: "登入中…",
+        portalStatusLoginFailed: "登入失敗：Email 或密碼錯誤。",
+        portalStatusNoMembership: "此帳號尚未被威果管理員開通任何企業會籍，請聯絡威果確認認養狀態。",
+        portalStatusLoadingPhotos: "正在讀取照片…",
+        portalStatusNoPhotos: "目前沒有可看的照片，請稍後再回來查看，或聯絡威果確認拍攝進度。",
+        portalStatusRevoked: "此功能已被暫停授權，若有疑問請聯絡威果。",
+        portalStatusNetworkError: "無法連線到 WeGrow Orbit 後端，請稍後再試。",
+        portalPhotoTime: "拍攝時間",
+        footerSub: "品牌展示 · 由 WeGrow Orbit 驅動",
+        plantLevel: "今日已照護",
+        toggle: "EN",
+        onlineOptions: ["直播看田", "員工線上導覽", "ESG 月報直播"],
+        offlineOptions: ["農場日", "採果體驗", "親子永續活動"]
+      },
+      en: {
+        title: "SOL-WeGrow Farm | Brand Showcase",
+        brandSub: "Powered by WeGrow Orbit",
+        navCare: "Care",
+        navAsset: "ESG",
+        navExperience: "Experience",
+        navCost: "Cost",
+        navAdmin: "Admin",
+        liveBadge: "Live",
+        eyebrow: "Sustainability, technology, experience",
+        heroTitle: "Turn corporate ESG into a visible farm experience.",
+        heroLine: "SOL-WeGrow Farm connects live plant views, WeGrow Orbit care records, and employee experiences so sustainability becomes more than a report.",
+        heroCtaAdmin: "Enter company data",
+        heroCtaExperience: "Plan experiences",
+        heroCtaCost: "Estimate add-ons",
+        metricEsg: "Downloadable outcomes and adoption records",
+        metricOrbit: "Watering, feeding, and scouting history",
+        metricLiveTitle: "Live",
+        metricLive: "Online farm visits and offline farm day",
+        careTitle: "Today’s Care",
+        care1Title: "Micro watering",
+        care1Text: "Water by root-zone condition, about 180 mL per plant.",
+        care2Title: "Low EC nutrition",
+        care2Text: "Record fertilizer, concentration, zone, and operator.",
+        care3Title: "Leaf scouting",
+        care3Text: "Check leaves, fruit, and drip lines with no urgent pest signal.",
+        assetTitle: "ESG Assets",
+        asset1Title: "Adoption planning Excel",
+        asset1Text: "Timeline, events, cases, and execution milestones.",
+        asset1Link: "Download workbook",
+        asset2Title: "ESG visual preview",
+        asset2Text: "For proposals, decks, and internal company posts.",
+        asset2Link: "View preview",
+        asset3Title: "Add-on cost estimator",
+        asset3Text: "One-page estimate for logistics, processing, and design.",
+        asset3Link: "Open calculator",
+        experienceTitle: "Experience Events",
+        event1Title: "Online adoption kickoff",
+        event1Text: "Live view, adopted zone, and care history.",
+        event2Title: "Remote employee farm visit",
+        event2Text: "See today’s plant status in three minutes.",
+        event3Title: "Farm day",
+        event3Text: "Tour, harvest, team photo, and employee experience.",
+        event4Title: "Annual impact review",
+        event4Text: "Results, photos, data, and next-year proposal.",
+        online: "Online",
+        offline: "Offline",
+        companionTitle: "Farm Companion Program",
+        buddyTitle: "Leaf Companion",
+        buddyText: "A custom company plant grows with care records and gives employees a reason to return.",
+        postcardTitle: "Farm Postcard",
+        postcardText: "Each completed care action creates a shareable daily postcard.",
+        harvestTitle: "Harvest Countdown",
+        harvestText: "Make harvest day a shared company moment employees look forward to.",
+        adminTitle: "Company Admin",
+        adminNote: "Demo data is stored in this browser’s localStorage and updates the page instantly.",
+        adminClose: "Close",
+        fieldCompany: "Company name",
+        fieldContact: "Contact person",
+        fieldCount: "Adopted plants",
+        fieldPhone: "Phone",
+        fieldPeriod: "Adoption period",
+        fieldAddress: "Address",
+        fieldOnline: "Online event preference",
+        fieldOffline: "Offline event preference",
+        fieldNotes: "Notes",
+        saveBtn: "Save company data",
+        resetBtn: "Reset demo data",
+        previewCompany: "Company",
+        previewContact: "Contact",
+        previewPhone: "Phone",
+        previewAddress: "Address",
+        portalTitle: "Adoption Customers: View Farm Photos",
+        portalNote: "Log in with an account WeGrow's admin has enabled. You'll only see photos for your company's active adoption. This is not a demo -- it calls the real WeGrow Orbit backend.",
+        portalEmail: "Account email",
+        portalPassword: "Password",
+        portalLoginBtn: "Log in to view photos",
+        portalLogoutBtn: "Log out",
+        portalStatusLoggingIn: "Signing in…",
+        portalStatusLoginFailed: "Login failed: wrong email or password.",
+        portalStatusNoMembership: "This account has no active company membership yet. Please contact WeGrow to confirm your adoption status.",
+        portalStatusLoadingPhotos: "Loading photos…",
+        portalStatusNoPhotos: "No photos available yet. Please check back later or contact WeGrow about the capture schedule.",
+        portalStatusRevoked: "This feature's access has been suspended. Please contact WeGrow if you have questions.",
+        portalStatusNetworkError: "Could not reach the WeGrow Orbit backend. Please try again later.",
+        portalPhotoTime: "Captured at",
+        footerSub: "Brand showcase · Powered by WeGrow Orbit",
+        plantLevel: "cared for today",
+        toggle: "中文",
+        onlineOptions: ["Live farm viewing", "Employee online tour", "ESG monthly livestream"],
+        offlineOptions: ["Farm day", "Harvest experience", "Family sustainability event"]
+      }
+    };
+
+    const defaults = {
+      companyName: "SOL 集團",
+      contactName: "林小姐",
+      adoptionCount: "120",
+      phone: "02-0000-0000",
+      email: "esg@sol.example",
+      period: "2026.07 - 2027.06",
+      address: "台北市信義區",
+      onlineEvent: "直播看田",
+      offlineEvent: "農場日",
+      notes: "企業員工可參與線上看田與線下採果。"
+    };
+
+    const storageKey = "sol-wegrow-farm-company-demo";
+    const langStorageKey = "sol-wegrow-farm-lang";
+    const form = document.querySelector("#companyForm");
+    const fields = Array.from(document.querySelectorAll("[data-field]"));
+    const bindTargets = Array.from(document.querySelectorAll("[data-bind]"));
+    const langToggle = document.querySelector("#langToggle");
+    let currentLang = localStorage.getItem(langStorageKey) || "zh";
+
+    function loadData() {
+      try {
+        return { ...defaults, ...JSON.parse(localStorage.getItem(storageKey) || "{}") };
+      } catch {
+        return { ...defaults };
+      }
+    }
+
+    function applyData(data) {
+      fields.forEach((field) => {
+        const key = field.dataset.field;
+        field.value = data[key] || "";
+      });
+      bindTargets.forEach((node) => {
+        const key = node.dataset.bind;
+        node.textContent = data[key] || defaults[key] || "";
+      });
+      updatePlantBuddy(data);
+    }
+
+    function updatePlantBuddy(data) {
+      const plant = document.querySelector("#plantBuddy");
+      const level = document.querySelector("#plantLevel");
+      if (!plant || !level) return;
+
+      const daySeed = Math.floor(Date.now() / 86400000);
+      const count = Number.parseInt(data.adoptionCount, 10) || 0;
+      const growth = Math.max(1, Math.min(6, Math.floor(count / 80) + (daySeed % 3) + 1));
+
+      plant.style.setProperty("--growth", String(growth));
+      level.textContent = `Lv. ${growth} · ${i18n[currentLang].plantLevel}`;
+    }
+
+    function updateSelectOptions(selectName, options) {
+      const select = document.querySelector(`select[name="${selectName}"]`);
+      if (!select) return;
+      Array.from(select.options).forEach((option, index) => {
+        option.textContent = options[index] || option.textContent;
+      });
+    }
+
+    function applyLanguage(lang) {
+      currentLang = lang;
+      const strings = i18n[lang];
+      document.documentElement.lang = lang === "zh" ? "zh-Hant" : "en";
+      document.title = strings.title;
+      document.querySelectorAll("[data-i18n]").forEach((node) => {
+        const key = node.dataset.i18n;
+        if (strings[key]) node.textContent = strings[key];
+      });
+      updateSelectOptions("onlineEvent", strings.onlineOptions);
+      updateSelectOptions("offlineEvent", strings.offlineOptions);
+      langToggle.textContent = strings.toggle;
+      localStorage.setItem(langStorageKey, lang);
+      updatePlantBuddy(data);
+    }
+
+    function currentFormData() {
+      return fields.reduce((data, field) => {
+        data[field.dataset.field] = field.value.trim();
+        return data;
+      }, {});
+    }
+
+    let data = loadData();
+    applyData(data);
+    applyLanguage(currentLang);
+
+    form.addEventListener("input", () => {
+      data = { ...defaults, ...currentFormData() };
+      applyData(data);
+    });
+
+    form.addEventListener("submit", (event) => {
+      event.preventDefault();
+      data = { ...defaults, ...currentFormData() };
+      localStorage.setItem(storageKey, JSON.stringify(data));
+      applyData(data);
+    });
+
+    document.querySelector("#resetDemo").addEventListener("click", () => {
+      localStorage.removeItem(storageKey);
+      data = { ...defaults };
+      applyData(data);
+    });
+
+    langToggle.addEventListener("click", () => {
+      applyLanguage(currentLang === "zh" ? "en" : "zh");
+    });
+
+    // ---------------------------------------------------------------------
+    // 認養客戶照片查看：真實呼叫 WeGrow Orbit 後端，不是Demo/localStorage假資料。
+    // 2026-09-18：這個區塊是唯一會打真實API的地方，故意跟上面的企業資料Demo表單
+    // 完全分開，不共用storageKey，避免真假資料混在一起。
+    // ---------------------------------------------------------------------
+    (function initCustomerPortal() {
+      const API_BASE = window.SOL_PORTAL_API_BASE || "https://api.wegrow-orbit.com";
+      const TOKEN_KEY = "sol-wegrow-farm-portal-token";
+
+      const loginForm = document.querySelector("#portalLoginForm");
+      const emailInput = document.querySelector("#portalEmail");
+      const passwordInput = document.querySelector("#portalPassword");
+      const statusEl = document.querySelector("#portalStatus");
+      const sessionEl = document.querySelector("#portalSession");
+      const orgNameEl = document.querySelector("#portalOrgName");
+      const logoutBtn = document.querySelector("#portalLogoutBtn");
+      const photosEl = document.querySelector("#portalPhotos");
+
+      let objectUrls = [];
+
+      function t(key) {
+        return (i18n[currentLang] && i18n[currentLang][key]) || key;
+      }
+
+      function setStatus(key, isError) {
+        statusEl.textContent = key ? t(key) : "";
+        statusEl.classList.toggle("error", Boolean(isError));
+      }
+
+      function revokeAllObjectUrls() {
+        objectUrls.forEach((url) => URL.revokeObjectURL(url));
+        objectUrls = [];
+      }
+
+      function showLoggedOut() {
+        revokeAllObjectUrls();
+        sessionEl.hidden = true;
+        loginForm.hidden = false;
+        photosEl.innerHTML = "";
+        orgNameEl.textContent = "";
+      }
+
+      function showLoggedIn(orgName) {
+        loginForm.hidden = true;
+        sessionEl.hidden = false;
+        orgNameEl.textContent = orgName || "";
+      }
+
+      function getToken() {
+        return localStorage.getItem(TOKEN_KEY) || "";
+      }
+
+      function setToken(token) {
+        if (token) localStorage.setItem(TOKEN_KEY, token);
+        else localStorage.removeItem(TOKEN_KEY);
+      }
+
+      async function apiFetch(path, options) {
+        const token = getToken();
+        const headers = Object.assign({}, (options && options.headers) || {}, {
+          Authorization: `Bearer ${token}`,
+        });
+        return fetch(`${API_BASE}${path}`, Object.assign({}, options, { headers }));
+      }
+
+      async function loadPhotoImage(photoId, imgEl, spinnerEl) {
+        try {
+          const resp = await apiFetch(`/api/customer/photos/${photoId}/image`);
+          if (!resp.ok) {
+            spinnerEl.textContent = resp.status === 404 ? "—" : "!";
+            return;
+          }
+          const blob = await resp.blob();
+          const url = URL.createObjectURL(blob);
+          objectUrls.push(url);
+          imgEl.src = url;
+          imgEl.hidden = false;
+          spinnerEl.hidden = true;
+        } catch {
+          spinnerEl.textContent = "!";
+        }
+      }
+
+      async function loadPhotos() {
+        photosEl.innerHTML = "";
+        setStatus("portalStatusLoadingPhotos", false);
+        let resp;
+        try {
+          resp = await apiFetch("/api/customer/photos");
+        } catch {
+          setStatus("portalStatusNetworkError", true);
+          return;
+        }
+
+        if (resp.status === 401) {
+          setToken("");
+          showLoggedOut();
+          setStatus("portalStatusLoginFailed", true);
+          return;
+        }
+        if (resp.status === 403) {
+          // 2026-09-18 E2E實測發現：撤權(resource_not_entitled)跟完全沒有會籍是
+          // 兩種不同的後端原因，不能都顯示成同一句「尚未開通任何企業會籍」，
+          // 那樣會讓已經有會籍但單一功能被撤權的客戶誤以為自己整個帳號都沒被開通。
+          const body = await resp.json().catch(() => ({}));
+          setStatus(body.detail === "resource_not_entitled" ? "portalStatusRevoked" : "portalStatusNoMembership", true);
+          return;
+        }
+        if (!resp.ok) {
+          setStatus("portalStatusNetworkError", true);
+          return;
+        }
+
+        const photos = await resp.json();
+        if (!Array.isArray(photos) || photos.length === 0) {
+          setStatus("portalStatusNoPhotos", false);
+          return;
+        }
+
+        setStatus("", false);
+        photos.forEach((photo) => {
+          const card = document.createElement("article");
+          card.className = "portal-photo";
+
+          const frame = document.createElement("div");
+          frame.className = "frame";
+          const spinner = document.createElement("span");
+          spinner.className = "spinner";
+          spinner.textContent = "…";
+          const img = document.createElement("img");
+          img.alt = photo.zone_name || photo.farm_name || "";
+          img.hidden = true;
+          frame.appendChild(img);
+          frame.appendChild(spinner);
+
+          const meta = document.createElement("div");
+          meta.className = "meta";
+          const capturedAt = photo.captured_at ? new Date(photo.captured_at).toLocaleString("zh-TW", { timeZone: "Asia/Taipei" }) : "";
+          meta.textContent = `${photo.zone_name || photo.farm_name || ""} · ${t("portalPhotoTime")} ${capturedAt}`;
+
+          card.appendChild(frame);
+          card.appendChild(meta);
+          photosEl.appendChild(card);
+
+          loadPhotoImage(photo.id, img, spinner);
+        });
+      }
+
+      async function restoreOrLoginSession() {
+        const token = getToken();
+        if (!token) {
+          showLoggedOut();
+          return;
+        }
+        let resp;
+        try {
+          resp = await apiFetch("/api/customer/me");
+        } catch {
+          setStatus("portalStatusNetworkError", true);
+          return;
+        }
+        if (resp.status === 401) {
+          setToken("");
+          showLoggedOut();
+          return;
+        }
+        if (resp.status === 403) {
+          showLoggedIn("");
+          setStatus("portalStatusNoMembership", true);
+          return;
+        }
+        if (!resp.ok) {
+          setStatus("portalStatusNetworkError", true);
+          return;
+        }
+        const me = await resp.json();
+        showLoggedIn(me.organization ? me.organization.name : "");
+        await loadPhotos();
+      }
+
+      loginForm.addEventListener("submit", async (event) => {
+        event.preventDefault();
+        setStatus("portalStatusLoggingIn", false);
+
+        const body = new URLSearchParams();
+        body.set("username", emailInput.value.trim());
+        body.set("password", passwordInput.value);
+
+        let resp;
+        try {
+          resp = await fetch(`${API_BASE}/auth/login`, {
+            method: "POST",
+            headers: { "Content-Type": "application/x-www-form-urlencoded" },
+            body: body.toString(),
+          });
+        } catch {
+          setStatus("portalStatusNetworkError", true);
+          return;
+        }
+
+        if (!resp.ok) {
+          setStatus("portalStatusLoginFailed", true);
+          return;
+        }
+
+        const result = await resp.json();
+        setToken(result.access_token);
+        passwordInput.value = "";
+        await restoreOrLoginSession();
+      });
+
+      logoutBtn.addEventListener("click", () => {
+        setToken("");
+        setStatus("", false);
+        showLoggedOut();
+      });
+
+      restoreOrLoginSession();
+    })();
+  </script>
 </body>
 </html>
