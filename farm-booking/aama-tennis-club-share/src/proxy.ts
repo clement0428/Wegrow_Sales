@@ -2,7 +2,8 @@ import { NextResponse, type NextRequest } from "next/server";
 
 const PUBLIC_PREFIXES = [
   "/login", "/api/auth", "/api/farm/availability", "/api/farm/bookings", "/api/farm/checkout",
-  "/api/bookings", "/_next", "/brand", "/favicon",
+  "/api/bookings", "/booking", "/my-bookings", "/visit-info", "/contact",
+  "/_next", "/brand", "/favicon",
 ];
 
 export function proxy(req: NextRequest) {
