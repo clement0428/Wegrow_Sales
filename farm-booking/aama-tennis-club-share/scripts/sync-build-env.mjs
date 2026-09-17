@@ -26,6 +26,8 @@ import { readFileSync, writeFileSync, existsSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import { parse as parseJsonc } from "jsonc-parser";
+import nextEnv from "@next/env";
+const { loadEnvConfig } = nextEnv;
 
 const root = dirname(dirname(fileURLToPath(import.meta.url)));
 const wranglerPath = join(root, "wrangler.jsonc");
@@ -35,10 +37,6 @@ const envProdPath = join(root, ".env.production");
 // (secrets, DB ids, etc.) must never be inlined into a client bundle.
 const PUBLIC_VAR_ALLOWLIST = ["NEXT_PUBLIC_LIFF_ID", "NEXT_PUBLIC_SITE_URL"];
 const VALID_TARGETS = ["production", "preview"];
-// Files Next.js reads with HIGHER precedence than .env.production. If any of
-// these already set one of our allowlisted keys to something different, our
-// write to .env.production would be silently ignored at build time.
-const HIGHER_PRECEDENCE_FILES = [".env.production.local", ".env.local"];
 
 function fail(message) {
   console.error(`\n✖ sync-build-env: ${message}\n`);
@@ -85,15 +83,21 @@ function looksLikePlaceholder(value) {
 const config = loadWrangler();
 
 // ---- P0: no environment may combine a fake-login backdoor with the production database ----
+// Scans EVERY environment block actually present in wrangler.jsonc (top-level "preview"
+// plus every key under `env`), not just the ones this script currently knows how to build
+// for (VALID_TARGETS). A future "staging" block added to wrangler.jsonc without a matching
+// entry in this script's target list must still be caught here — unknown environments are
+// not assumed safe.
 const prodDbId = d1DatabaseId(config, "production");
 if (!prodDbId) fail("could not resolve env.production's D1 database_id — refusing to proceed blind");
-for (const target of VALID_TARGETS) {
-  const vars = varsFor(config, target);
-  const dbId = d1DatabaseId(config, target);
+const allEnvNames = ["preview", ...Object.keys(config.env ?? {})].filter((v, i, a) => a.indexOf(v) === i);
+for (const envName of allEnvNames) {
+  const vars = varsFor(config, envName);
+  const dbId = d1DatabaseId(config, envName);
   const fakeLoginOn = String(vars.DEV_FAKE_LOGIN ?? "").trim() === "1";
   if (fakeLoginOn && dbId === prodDbId) {
     fail(
-      `env "${target}" has DEV_FAKE_LOGIN=1 AND is bound to the PRODUCTION D1 database (${prodDbId}). ` +
+      `env "${envName}" has DEV_FAKE_LOGIN=1 AND is bound to the PRODUCTION D1 database (${prodDbId}). ` +
         `Anyone who can reach that Worker could authenticate as any user against real production data. Refusing to build.`
     );
   }
@@ -131,35 +135,20 @@ if (target === "production") {
         `"<digits>-<id>" LIFF ID shape. This only checks the format — it cannot confirm LINE has actually registered it.`
     );
   }
-  if (!/^https:\/\//.test(resolved.NEXT_PUBLIC_SITE_URL)) {
-    fail(`production NEXT_PUBLIC_SITE_URL ${JSON.stringify(resolved.NEXT_PUBLIC_SITE_URL)} must be an https:// URL`);
+  let siteUrlParsed;
+  try {
+    siteUrlParsed = new URL(resolved.NEXT_PUBLIC_SITE_URL);
+  } catch {
+    fail(`production NEXT_PUBLIC_SITE_URL ${JSON.stringify(resolved.NEXT_PUBLIC_SITE_URL)} is not a valid URL`);
   }
-}
-
-// ---- refuse to proceed if something with higher precedence than .env.production would silently win ----
-for (const key of PUBLIC_VAR_ALLOWLIST) {
-  if (key in process.env && process.env[key] !== resolved[key]) {
-    fail(
-      `the current shell/CI environment already has ${key}=${JSON.stringify(process.env[key])} set. ` +
-        `Real env vars override .env.production at build time and this does not match wrangler.jsonc's ` +
-        `env.${target}.vars.${key}=${JSON.stringify(resolved[key])}. Unset it or fix it — do not let this pass silently.`
-    );
+  if (siteUrlParsed.protocol !== "https:") {
+    fail(`production NEXT_PUBLIC_SITE_URL ${JSON.stringify(resolved.NEXT_PUBLIC_SITE_URL)} must use https:`);
   }
-  for (const file of HIGHER_PRECEDENCE_FILES) {
-    const p = join(root, file);
-    if (!existsSync(p)) continue;
-    const line = readFileSync(p, "utf8")
-      .split(/\r?\n/)
-      .find((l) => l.startsWith(`${key}=`));
-    if (line) {
-      const fileValue = line.slice(key.length + 1);
-      if (fileValue !== resolved[key]) {
-        fail(
-          `${file} sets ${key}=${JSON.stringify(fileValue)}, which overrides .env.production at build time and ` +
-            `does not match wrangler.jsonc (${JSON.stringify(resolved[key])}). Fix or delete ${file} before building.`
-        );
-      }
-    }
+  if (siteUrlParsed.username || siteUrlParsed.password) {
+    fail(`production NEXT_PUBLIC_SITE_URL must not contain userinfo (username/password in the URL)`);
+  }
+  if (siteUrlParsed.hash) {
+    fail(`production NEXT_PUBLIC_SITE_URL must not contain a fragment (#...)`);
   }
 }
 
@@ -171,6 +160,27 @@ const otherLines = existingLines.filter((line) => !PUBLIC_VAR_ALLOWLIST.some((ke
 const newLines = [...otherLines, ...PUBLIC_VAR_ALLOWLIST.map((key) => `${key}=${resolved[key]}`)];
 writeFileSync(envProdPath, newLines.join("\n") + "\n");
 
+// ---- verify nothing with higher precedence silently overrides what we just wrote ----
+// Delegates to Next.js's OWN env loader (@next/env, the exact code `next build` itself
+// uses) instead of hand-parsing .env.local/.env.production.local — that hand-rolled
+// version missed `export KEY=`, quoted values, leading whitespace and duplicate keys.
+// This checks the real effective value, whatever produced it (process.env,
+// .env.production.local, .env.local, or a stale value we somehow failed to overwrite).
+const { combinedEnv, loadedEnvFiles } = loadEnvConfig(root, false, {
+  info: () => {},
+  error: (...args) => console.error(...args),
+});
 for (const key of PUBLIC_VAR_ALLOWLIST) {
-  console.log(`✓ sync-build-env[${target}]: ${key} = ${JSON.stringify(resolved[key])} (from wrangler.jsonc)`);
+  const effective = combinedEnv?.[key];
+  if (effective !== resolved[key]) {
+    fail(
+      `after writing .env.production, Next.js's own env loader still resolves ${key} to ${JSON.stringify(effective)}, ` +
+        `not the intended ${JSON.stringify(resolved[key])}. Something with higher precedence is overriding it — check ` +
+        `process.env, and these loaded files: ${loadedEnvFiles.map((f) => f.path).join(", ") || "(none)"}.`
+    );
+  }
+}
+
+for (const key of PUBLIC_VAR_ALLOWLIST) {
+  console.log(`✓ sync-build-env[${target}]: ${key} = ${JSON.stringify(resolved[key])} (from wrangler.jsonc, verified via @next/env)`);
 }
