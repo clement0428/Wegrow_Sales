@@ -1,0 +1,63 @@
+name: farm-booking tests
+
+# Test-only CI — deliberately does NOT deploy anything and needs no secrets.
+# Scoped to the farm-booking subproject via `paths`, since this repo hosts
+# many unrelated projects. This exists so a regression (e.g. the OAuth
+# substring-match bug, or the P0 preview/production D1 mixup found in the
+# 2026-09-18 LINE incident — see farm-booking/aama-tennis-club-share/
+# outputs equivalents / project memory) gets caught on every push/PR instead
+# of only when someone happens to run the tests locally before a manual
+# deploy. Whether to ALSO wire up an auto-deploy workflow at this repo root
+# is a separate decision, not made here — see the incident report for why.
+
+on:
+  push:
+    branches: [master, main]
+    paths:
+      - "farm-booking/aama-tennis-club-share/**"
+  pull_request:
+    paths:
+      - "farm-booking/aama-tennis-club-share/**"
+  workflow_dispatch: {}
+
+defaults:
+  run:
+    working-directory: farm-booking/aama-tennis-club-share
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: farm-booking/aama-tennis-club-share/package-lock.json
+      - run: npm ci
+      - run: npx vitest run
+      - name: verify OAuth checker negative tests specifically
+        run: npx vitest run tests/scripts/verify-line-oauth.test.ts
+      - name: confirm sync-build-env.mjs refuses a deliberately reintroduced P0 vulnerability
+        run: |
+          cp wrangler.jsonc wrangler.jsonc.bak
+          python3 -c "
+          import re
+          t = open('wrangler.jsonc').read()
+          # point the preview (top-level) D1 database_id at whatever env.production uses,
+          # simulating the exact vulnerability this repo shipped once already.
+          m = re.search(r'\"env\":\s*\{\s*\"production\":[\s\S]*?\"database_id\":\s*\"([^\"]+)\"', t)
+          prod_id = m.group(1)
+          # Replace ONLY the first (top-level) database_id occurrence.
+          t = re.sub(r'(\"d1_databases\":\s*\[\s*\{\s*\"binding\":\s*\"DB\",\s*\"database_name\":\s*\"[^\"]+\",\s*\"database_id\":\s*\")[^\"]+(\")', r'\g<1>' + prod_id + r'\g<2>', t, count=1)
+          open('wrangler.jsonc', 'w').write(t)
+          "
+          if BUILD_TARGET_ENV=preview node scripts/sync-build-env.mjs; then
+            echo "::error::sync-build-env.mjs did NOT refuse the reintroduced DEV_FAKE_LOGIN+production-D1 combo — P0 regression guard is broken"
+            mv wrangler.jsonc.bak wrangler.jsonc
+            exit 1
+          fi
+          mv wrangler.jsonc.bak wrangler.jsonc
+          echo "P0 regression guard correctly refused the deliberately reintroduced vulnerable config"

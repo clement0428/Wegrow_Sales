@@ -34,6 +34,50 @@ describe("verifyLineOAuthRedirect", () => {
     expect(result.ok).toBe(true);
   });
 
+  it("PASS: redirect_uri carries the expected liff.state param", () => {
+    const url = buildUrl({ redirect_uri: `${SITE_URL}/?liff.state=%2Flogin` });
+    const result = verifyLineOAuthRedirect(url, LIFF_ID, CLIENT_ID, SITE_URL);
+    expect(result.ok).toBe(true);
+  });
+
+  it("FAIL: outer pathname is not the expected LINE login path (third review round)", () => {
+    const url = buildUrl().replace("/oauth2/v2.1/login?", "/some/other/unexpected/path?");
+    const result = verifyLineOAuthRedirect(url, LIFF_ID, CLIENT_ID, SITE_URL);
+    expect(result.ok).toBe(false);
+  });
+
+  it("FAIL: returnUri is an absolute URL to a different host, not a relative LINE-internal path (third review round)", () => {
+    const inner = new URLSearchParams({
+      app_id: LIFF_ID,
+      client_id: CLIENT_ID,
+      redirect_uri: SITE_URL + "/",
+    });
+    const returnUri = `https://evil.example.org/consent?${inner.toString()}`;
+    const url = `https://access.line.me/oauth2/v2.1/login?returnUri=${encodeURIComponent(returnUri)}`;
+    const result = verifyLineOAuthRedirect(url, LIFF_ID, CLIENT_ID, SITE_URL);
+    expect(result.ok).toBe(false);
+  });
+
+  it("FAIL: returnUri path is a plausible-looking but wrong LINE-internal path", () => {
+    const inner = new URLSearchParams({ app_id: LIFF_ID, client_id: CLIENT_ID, redirect_uri: SITE_URL + "/" });
+    const returnUri = `/oauth2/v2.1/authorize/different-endpoint?${inner.toString()}`;
+    const url = `https://access.line.me/oauth2/v2.1/login?returnUri=${encodeURIComponent(returnUri)}`;
+    const result = verifyLineOAuthRedirect(url, LIFF_ID, CLIENT_ID, SITE_URL);
+    expect(result.ok).toBe(false);
+  });
+
+  it("FAIL: redirect_uri carries an extra unexpected query param alongside liff.state (third review round)", () => {
+    const url = buildUrl({ redirect_uri: `${SITE_URL}/?liff.state=%2Flogin&evil_param=steal_token` });
+    const result = verifyLineOAuthRedirect(url, LIFF_ID, CLIENT_ID, SITE_URL);
+    expect(result.ok).toBe(false);
+  });
+
+  it("FAIL: redirect_uri carries only an unexpected query param, no liff.state at all", () => {
+    const url = buildUrl({ redirect_uri: `${SITE_URL}/?evil_param=steal_token` });
+    const result = verifyLineOAuthRedirect(url, LIFF_ID, CLIENT_ID, SITE_URL);
+    expect(result.ok).toBe(false);
+  });
+
   it("FAIL: app_id has a wrong suffix appended (previously false-passed via includes())", () => {
     const url = buildUrl({ app_id: LIFF_ID + "WRONG" });
     const result = verifyLineOAuthRedirect(url, LIFF_ID, CLIENT_ID, SITE_URL);

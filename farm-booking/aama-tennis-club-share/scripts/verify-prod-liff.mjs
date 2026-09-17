@@ -160,33 +160,46 @@ async function checkPageWithRealBrowser(browser, path, { expectRedirectToLineLog
     return record(name, "PASS", "liff.init() succeeded and liff.login() reached LINE's real OAuth endpoint with an exact-matched app_id/client_id/redirect_uri");
   }
 
-  // Homepage path: poll for a determinate init outcome instead of a fixed
-  // sleep-then-hope. The app doesn't currently expose an init-state hook of
-  // its own (adding one is a source change, tracked separately) — so this
-  // polls the same liff global the SDK sets, waiting for either a stable
-  // `id` or for pageerror/timeout, rather than guessing 4 seconds is enough.
+  // Homepage path: poll the app's OWN init-state marker (window.__LIFF_INIT_STATE__,
+  // set by FarmBookingApp.tsx's real init useEffect — see that file) for a
+  // TERMINAL value, instead of inferring completion indirectly from `liff.id`
+  // being truthy. `liff.id` is set as soon as the SDK constructs its internal
+  // config, which is not the same thing as the app's init flow actually
+  // resolving (success) or rejecting (failure) — polling for the app's own
+  // "guest"/"ready"/"error" states ties this check to the real init promise's
+  // outcome, matching the third review round's requirement. "loading" and
+  // "disabled" are not terminal and keep the poll going (or time out).
+  const TERMINAL_STATES = ["guest", "ready", "error"];
   const deadline = Date.now() + 15000;
+  let appState = { present: false, status: null };
   let liffState = { liffGlobalPresent: false };
   while (Date.now() < deadline) {
-    liffState = await page
+    appState = await page
       .evaluate(() => {
-        if (typeof liff === "undefined") return { liffGlobalPresent: false };
-        const safe = (fn) => {
-          try {
-            return { value: fn() };
-          } catch (e) {
-            return { error: `${e.name}: ${e.message}` };
-          }
-        };
-        const idResult = liff.id ?? null;
-        const loggedInResult = safe(() => liff.isLoggedIn());
-        return { liffGlobalPresent: true, id: idResult, isLoggedIn: loggedInResult };
+        const w = window;
+        if (typeof w.__LIFF_INIT_STATE__ === "undefined") return { present: false, status: null };
+        return { present: true, status: w.__LIFF_INIT_STATE__ };
       })
-      .catch((e) => ({ evalError: e.message }));
-    if (liffState.liffGlobalPresent && liffState.id) break;
+      .catch((e) => ({ present: false, status: null, evalError: e.message }));
+    if (appState.present && TERMINAL_STATES.includes(appState.status)) break;
     if (pageErrors.length > 0) break;
     await new Promise((r) => setTimeout(r, 250));
   }
+  // Secondary corroboration from the SDK's own global, once the app itself
+  // reports a terminal state — not the primary completion signal anymore.
+  liffState = await page
+    .evaluate(() => {
+      if (typeof liff === "undefined") return { liffGlobalPresent: false };
+      const safe = (fn) => {
+        try {
+          return { value: fn() };
+        } catch (e) {
+          return { error: `${e.name}: ${e.message}` };
+        }
+      };
+      return { liffGlobalPresent: true, id: liff.id ?? null, isLoggedIn: safe(() => liff.isLoggedIn()) };
+    })
+    .catch((e) => ({ evalError: e.message }));
   await page.close();
 
   if (criticalFailures.length > 0) {
@@ -198,14 +211,24 @@ async function checkPageWithRealBrowser(browser, path, { expectRedirectToLineLog
   if (thirdPartyFailures.length > 0) {
     console.log(`  (third-party resource failures, not blocking: ${thirdPartyFailures.join(" | ")})`);
   }
-  if (!liffState.liffGlobalPresent) return record(name, "FAIL", "window.liff never became available (SDK did not initialize within 15s)");
+  if (!appState.present) {
+    return record(name, "FAIL", "window.__LIFF_INIT_STATE__ never appeared — app's own init-state marker is missing or the app didn't mount");
+  }
+  if (!TERMINAL_STATES.includes(appState.status)) {
+    return record(name, "FAIL", `app's own init state stayed non-terminal (${JSON.stringify(appState.status)}) after 15s — the actual init/login promise never settled`);
+  }
+  if (appState.status === "error") {
+    return record(name, "FAIL", "app's own init flow reached its error state (the real init/token-exchange promise rejected)");
+  }
+  // appState.status is now "guest" or "ready" — the real flow actually settled successfully.
+  if (!liffState.liffGlobalPresent) return record(name, "FAIL", "window.liff is not available even though the app reports a terminal success state — inconsistent SDK state");
   if (liffState.id !== expectedLiffId) {
     return record(name, "FAIL", `live liff.id is ${JSON.stringify(liffState.id)}, expected exactly ${JSON.stringify(expectedLiffId)}`);
   }
   if (liffState.isLoggedIn?.error) {
-    return record(name, "FAIL", `liff.isLoggedIn() threw after init: ${liffState.isLoggedIn.error} — SDK state is not actually healthy despite liff.id being set`);
+    return record(name, "FAIL", `liff.isLoggedIn() threw after init: ${liffState.isLoggedIn.error} — SDK state is not actually healthy despite the app reporting success`);
   }
-  record(name, "PASS", `liff.init() succeeded, SDK reports the exact expected liff.id (${liffState.id}) and isLoggedIn() did not throw`);
+  record(name, "PASS", `app's own init flow reached a real terminal state (${appState.status}), SDK reports the exact expected liff.id (${liffState.id}) and isLoggedIn() did not throw`);
 }
 
 async function main() {

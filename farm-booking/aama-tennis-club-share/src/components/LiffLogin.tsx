@@ -10,6 +10,15 @@ export default function LiffLogin({ liffId, devLogin, returnTo = "/" }: { liffId
   const [state, setState] = useState<State>("init");
   const [msg, setMsg] = useState("");
 
+  // Mirrors the real init/login state for external observability (postdeploy
+  // verification) — set only from the actual flow's own transitions below,
+  // never from a second/parallel init call.
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      (window as unknown as { __LIFF_INIT_STATE__?: string }).__LIFF_INIT_STATE__ = state;
+    }
+  }, [state]);
+
   useEffect(() => {
     if (!liffId) return;
     let cancelled = false;

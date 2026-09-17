@@ -125,6 +125,16 @@ export default function FarmBookingApp({ initialView = "booking" }: { initialVie
     return () => { cancelled = true; };
   }, []);
 
+  // Mirrors the real liff.init()/login state above for external observability
+  // (postdeploy verification, monitoring) — never sets this from anywhere
+  // other than the actual init flow's own state transitions, so it can't
+  // mask a real failure by reporting a state the SDK didn't actually reach.
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      (window as unknown as { __LIFF_INIT_STATE__?: string }).__LIFF_INIT_STATE__ = lineIdentity.status;
+    }
+  }, [lineIdentity.status]);
+
   useEffect(() => {
     const controller = new AbortController();
     fetch(`/api/farm/availability?people=${people}`, { signal: controller.signal })
