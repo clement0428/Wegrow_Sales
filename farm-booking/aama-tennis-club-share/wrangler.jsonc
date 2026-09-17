@@ -11,14 +11,14 @@
   "d1_databases": [
     {
       "binding": "DB",
-      "database_name": "wegrow-farm-booking-prod",
-      "database_id": "4f40a0e0-e5bb-4de0-93ad-91ad3b32dfc7",
+      "database_name": "wegrow-farm-booking-preview",
+      "database_id": "68298701-9520-4bcc-80b1-ae4cac6ddbfb",
       "migrations_dir": "d1/migrations"
     }
   ],
   "vars": {
-    "NEXT_PUBLIC_LIFF_ID": "2011633158-ZdAj8eJh",
-    "NEXT_PUBLIC_SITE_URL": "https://booking.wegrow-orbit.com",
+    "NEXT_PUBLIC_LIFF_ID": "",
+    "NEXT_PUBLIC_SITE_URL": "https://wegrow-farm-booking-preview.clement0428.workers.dev",
     "DEV_FAKE_LOGIN": "1"
   },
   "env": {
