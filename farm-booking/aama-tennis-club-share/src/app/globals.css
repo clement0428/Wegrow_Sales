@@ -31,7 +31,8 @@
 .intro-copy h1 { margin: 0; font-size: 38px; line-height: 1.18; font-weight: 900; }
 .intro-copy p { margin: 17px 0 0; color: #555; font-size: 16px; line-height: 1.65; }
 .intro-facts { display: flex; flex-wrap: wrap; gap: 16px; margin-top: 22px; }
-.intro-facts span { display: flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 700; }
+.intro-facts span, .intro-facts a { display: flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 700; }
+.intro-facts a { color: #393939; text-decoration: underline; }
 .intro-facts svg { width: 17px; }
 
 .farm-app .stepper { width: min(760px, calc(100% - 28px)); margin: 24px auto 0; border: 1px solid #dcdcd7; box-shadow: none; }

@@ -235,7 +235,7 @@ export default function FarmBookingApp({ initialView = "booking" }: { initialVie
               <span className="eyebrow">麻豆科技溫室</span>
               <h1>來麻豆，走進<br />威果科技農場</h1>
               <p>查看農場已開放的日期，選擇人數與體驗內容。</p>
-              <div className="intro-facts"><span><Clock3 /> 約 90 分鐘</span><span><Ticket /> 門票可折抵當日消費</span></div>
+              <div className="intro-facts"><span><Clock3 /> 約 90 分鐘</span><span><Ticket /> 門票可折抵當日消費</span><a href="https://maps.app.goo.gl/mde8o1215UvvtbBu8" target="_blank" rel="noreferrer"><MapPin /> 台南麻豆（Google Maps 導航）</a></div>
             </div>
           </section>
 
