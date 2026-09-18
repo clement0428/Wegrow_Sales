@@ -15,6 +15,7 @@ import {
   TICKET_PRICE_TWD,
 } from "@/lib/farm/pricing";
 import FarmDateCalendar from "./FarmDateCalendar";
+import { ORDER_STEPS, stepIndexOf, type StatusBucket } from "@/lib/farm/status";
 
 export type FarmView = "booking" | "mine" | "info" | "contact";
 
@@ -44,7 +45,7 @@ type CheckoutState =
   | { status: "idle" }
   | { status: "loading" }
   | { status: "blocked"; message: string }
-  | { status: "reserved"; bookingNumber: string; lookupCode: string; message: string };
+  | { status: "reserved"; bookingNumber: string; lookupCode: string; message: string; statusBucket: StatusBucket };
 
 type BookingRecord = {
   bookingNumber: string;
@@ -59,6 +60,7 @@ type BookingRecord = {
   startsAt: string;
   endsAt: string;
   experience: string;
+  statusBucket: StatusBucket;
 };
 
 type LineIdentity =
@@ -224,6 +226,7 @@ export default function FarmBookingApp({ initialView = "booking" }: { initialVie
         bookingNumber: result.booking.bookingNumber,
         lookupCode: result.booking.lookupCode,
         message: result.message || "已收到預約申請。",
+        statusBucket: result.booking.statusBucket,
       });
     } catch {
       setCheckout({ status: "blocked", message: "無法連接預約服務，請稍後再試。" });
@@ -372,7 +375,10 @@ export default function FarmBookingApp({ initialView = "booking" }: { initialVie
                 {checkout.status === "idle" && <button className="primary-button" onClick={submitBooking}>送出預約申請 <ArrowRight /></button>}
                 {checkout.status === "loading" && <button className="primary-button" disabled><LoaderCircle /> 正在保留名額…</button>}
                 {checkout.status === "blocked" && <div className="blocked-result"><ShieldCheck /><div><strong>這次沒有建立預約</strong><p>{checkout.message}</p><span>沒有扣款。請回到時段重新選擇，或聯繫農場。</span></div></div>}
-                {checkout.status === "reserved" && <div className="blocked-result success-result"><Check /><div><strong>{checkout.message}</strong><p>預約編號：{checkout.bookingNumber}</p><span>查詢碼：<b>{checkout.lookupCode}</b>。請和手機號碼一起保存；目前沒有扣款。</span></div></div>}
+                {checkout.status === "reserved" && <>
+                  <div className="blocked-result success-result"><Check /><div><strong>{checkout.message}</strong><p>預約編號：{checkout.bookingNumber}</p><span>查詢碼：<b>{checkout.lookupCode}</b>。請和手機號碼一起保存；目前沒有扣款。</span></div></div>
+                  <OrderStatusBar bucket={checkout.statusBucket} />
+                </>}
               </>
             )}
           </section>
@@ -401,6 +407,28 @@ function NavButton({ active, icon, label, onClick }: { active: boolean; icon: Re
 function SimpleView({ icon, title, intro, children }: { icon: React.ReactNode; title: string; intro: string; children: React.ReactNode }) { return <section className="simple-view"><div className="simple-heading"><span>{icon}</span><div><h1>{title}</h1><p>{intro}</p></div></div>{children}</section>; }
 function InfoRow({ icon, title, text }: { icon: React.ReactNode; title: string; text: React.ReactNode }) { return <div className="info-row"><span>{icon}</span><div><strong>{title}</strong><p>{text}</p></div></div>; }
 function PriceLine({ label, value, highlight = false }: { label: string; value: number; highlight?: boolean }) { return <div className={highlight ? "price-line highlight" : "price-line"}><span>{label}</span><strong>{value < 0 ? "−" : ""}NT$ {Math.abs(value).toLocaleString()}</strong></div>; }
+
+// 規格 2A 節「訂單狀態列」：選日期→填資料→確認/付款→預約成立→已到場→已完成。
+// stepIndexOf() is the single shared source of truth for where a booking sits
+// (also used by the admin status buckets) so customer and staff views never disagree.
+function OrderStatusBar({ bucket }: { bucket: StatusBucket }) {
+  if (bucket === "cancelled") return <div className="order-status-bar cancelled"><Info /> 這筆預約已取消。</div>;
+  const current = stepIndexOf(bucket);
+  return (
+    <div className="order-status-bar">
+      {ORDER_STEPS.map((label, index) => {
+        const state = index < current ? "done" : index === current ? "current" : "todo";
+        return (
+          <div key={label} className={`order-step ${state}`}>
+            <span className="order-step-dot">{state === "done" ? <Check size={11} /> : index + 1}</span>
+            <span className="order-step-label">{label}</span>
+          </div>
+        );
+      })}
+      {bucket === "exception" && <span className="order-step-note"><Info size={13} /> 需要農場確認，請留意 LINE 或電話通知。</span>}
+    </div>
+  );
+}
 
 function MyBookingsView({ identity, onBack }: { identity: LineIdentity; onBack: () => void }) {
   const [phone, setPhone] = useState("");
@@ -465,6 +493,7 @@ function MyBookingsView({ identity, onBack }: { identity: LineIdentity; onBack: 
         <ReviewRow icon={<Users />} label="人數" value={`${item.totalPeople} 位`} />
         <ReviewRow icon={<ShieldCheck />} label="預約狀態" value={item.bookingStatus === "requested" ? "等待農場確認" : item.bookingStatus} />
         <ReviewRow icon={<CreditCard />} label="付款狀態" value="尚未開放付款" />
+        <OrderStatusBar bucket={item.statusBucket} />
       </div>)}
       {identity.status !== "ready" && <>
       <div className="form-grid">
@@ -482,6 +511,7 @@ function MyBookingsView({ identity, onBack }: { identity: LineIdentity; onBack: 
         <ReviewRow icon={<Users />} label="人數" value={`${booking.totalPeople} 位`} />
         <ReviewRow icon={<ShieldCheck />} label="預約狀態" value={booking.bookingStatus === "requested" ? "等待農場確認" : booking.bookingStatus} />
         <ReviewRow icon={<CreditCard />} label="付款狀態" value="尚未開放付款" />
+        <OrderStatusBar bucket={booking.statusBucket} />
       </div>}
       </>}
       <button className="back-button" onClick={onBack}><ArrowLeft /> 返回預約</button>

@@ -273,6 +273,19 @@ button:disabled { cursor: not-allowed; opacity: .45; }
 .review-icon svg { width: 18px; }
 .review-row > span:nth-child(2) { display: flex; flex-direction: column; gap: 4px; }
 .review-row small { color: var(--muted); }
+
+/* OrderStatusBar — 2A 訂單狀態列 */
+.order-status-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 0; margin: 4px 0 20px; padding: 16px 14px; background: #fafaf7; border: 1px solid var(--line); border-radius: 4px; }
+.order-status-bar.cancelled { display: flex; align-items: center; gap: 8px; color: var(--red); font-weight: 700; background: #fbeceb; border-color: #e7c7c3; }
+.order-step { display: flex; flex-direction: column; align-items: center; gap: 6px; flex: 1; min-width: 56px; position: relative; }
+.order-step:not(:last-child)::after { content: ""; position: absolute; top: 11px; left: calc(50% + 17px); width: calc(100% - 34px); height: 2px; background: #e0e0da; }
+.order-step.done:not(:last-child)::after { background: #b7b7b0; }
+.order-step-dot { width: 22px; height: 22px; border-radius: 50%; display: grid; place-items: center; font-size: 11px; font-weight: 700; background: #fff; border: 2px solid #d5d5d0; color: #999; z-index: 1; }
+.order-step.done .order-step-dot { background: #4d4d4d; border-color: #4d4d4d; color: #fff; }
+.order-step.current .order-step-dot { border-color: #e2cf35; background: #fdf9de; color: #7a6f10; }
+.order-step-label { font-size: 11px; color: #999; text-align: center; }
+.order-step.done .order-step-label, .order-step.current .order-step-label { color: #444; font-weight: 700; }
+.order-step-note { width: 100%; margin-top: 10px; display: flex; align-items: center; gap: 6px; font-size: 12px; color: #a15c00; }
 .price-box { padding: 20px; margin-bottom: 18px; background: #f7f6d8; display: grid; grid-template-columns: 1fr auto; gap: 5px 16px; align-items: center; }
 .price-box strong { font-size: 23px; }
 .price-box small { grid-column: 1 / -1; color: var(--muted); line-height: 1.5; }

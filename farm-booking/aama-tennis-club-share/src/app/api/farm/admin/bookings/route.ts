@@ -1,13 +1,7 @@
 import { z } from "zod";
 import { requireAdmin } from "@/lib/auth/current-member";
 import { getDb } from "@/lib/db/client";
-
-// Status bucket mapping against the ACTUAL columns this schema has today
-// (booking_status: requested|confirmed|pending_payment, plus the point-in-time
-// cancelled_at/arrived_at/completed_at markers) — not a separate status enum,
-// since none exists in the DB. See docs/booking-calendar-implementation.md.
-const STATUS_BUCKETS = ["hold", "pending_payment", "confirmed", "arrived", "completed", "cancelled", "exception"] as const;
-type StatusBucket = (typeof STATUS_BUCKETS)[number];
+import { bucketOf, STATUS_BUCKETS, type StatusBucket } from "@/lib/farm/status";
 
 const querySchema = z.object({
   from: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
@@ -35,20 +29,6 @@ type BookingRow = {
   ends_at: string;
   experience: string;
 };
-
-function bucketOf(row: BookingRow, nowIso: string): StatusBucket {
-  if (row.cancelled_at) return "cancelled";
-  if (row.completed_at) return "completed";
-  if (row.arrived_at) return "arrived";
-  if (row.payment_status === "failed" || row.payment_status === "refund_pending") return "exception";
-  if (row.booking_status === "pending_payment") {
-    if (row.hold_expires_at && row.hold_expires_at < nowIso) return "exception"; // expired hold nobody cleaned up
-    return "pending_payment";
-  }
-  if (row.booking_status === "confirmed") return "confirmed";
-  if (row.booking_status === "requested") return "hold";
-  return "exception";
-}
 
 export async function GET(request: Request) {
   await requireAdmin();

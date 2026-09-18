@@ -2,6 +2,7 @@ import "server-only";
 import { getDb } from "@/lib/db/client";
 import { maxNewGroupSize, type CapacityPolicy } from "./capacity";
 import { isAllowedBookingSlot, ticketRateBpsForSlot } from "./visit-policy";
+import { bucketOf, type StatusBucket } from "./status";
 
 export type PublicFarmSlot = {
   id: string; startsAt: string; endsAt: string; existingGroups: number[];
@@ -70,18 +71,19 @@ export type FarmBookingRecord = {
   groupName: string; adultCount: number; childCount: number; infantCount: number;
   totalPeople: number; plantCount: number; mealCount: number; amountTwd: number;
   bookingStatus: string; paymentStatus: string; startsAt: string; endsAt: string;
-  experience: string; createdAt: string;
+  experience: string; createdAt: string; statusBucket: StatusBucket;
 };
 
 type BookingRow = {
   booking_number: string; lookup_code: string; contact_name: string; contact_phone: string;
   group_name: string | null; adult_count: number; child_count: number; infant_count: number;
   total_people: number; plant_count: number; meal_count: number; amount_twd: number;
-  booking_status: string; payment_status: string; starts_at: string; ends_at: string;
-  experience: string; created_at: string;
+  booking_status: string; payment_status: string; hold_expires_at: string | null;
+  cancelled_at: string | null; arrived_at: string | null; completed_at: string | null;
+  starts_at: string; ends_at: string; experience: string; created_at: string;
 };
 
-function mapBooking(row: BookingRow): FarmBookingRecord {
+function mapBooking(row: BookingRow, nowIso: string): FarmBookingRecord {
   return {
     bookingNumber: row.booking_number, lookupCode: row.lookup_code,
     contactName: row.contact_name, contactPhone: row.contact_phone,
@@ -91,37 +93,38 @@ function mapBooking(row: BookingRow): FarmBookingRecord {
     amountTwd: row.amount_twd, bookingStatus: row.booking_status,
     paymentStatus: row.payment_status, startsAt: row.starts_at, endsAt: row.ends_at,
     experience: row.experience, createdAt: row.created_at,
+    statusBucket: bucketOf(row, nowIso),
   };
 }
+
+const BOOKING_SELECT = `
+  SELECT b.booking_number, b.lookup_code, b.contact_name, b.contact_phone, b.group_name,
+         b.adult_count, b.child_count, b.infant_count, b.total_people,
+         b.plant_count, b.meal_count, b.amount_twd, b.booking_status,
+         b.payment_status, b.hold_expires_at, b.cancelled_at, b.arrived_at, b.completed_at,
+         b.created_at, s.starts_at, s.ends_at, e.name AS experience
+  FROM farm_bookings b
+  JOIN farm_slots s ON s.id = b.slot_id
+  JOIN farm_experiences e ON e.id = s.experience_id
+`;
 
 export async function findBooking(phone: string, lookupCode: string): Promise<FarmBookingRecord | null> {
   const db = await getDb();
   const row = await db.prepare(`
-    SELECT b.booking_number, b.lookup_code, b.contact_name, b.contact_phone, b.group_name,
-           b.adult_count, b.child_count, b.infant_count, b.total_people,
-           b.plant_count, b.meal_count, b.amount_twd, b.booking_status,
-           b.payment_status, b.created_at, s.starts_at, s.ends_at, e.name AS experience
-    FROM farm_bookings b
-    JOIN farm_slots s ON s.id = b.slot_id
-    JOIN farm_experiences e ON e.id = s.experience_id
+    ${BOOKING_SELECT}
     WHERE b.contact_phone = ? AND UPPER(b.lookup_code) = UPPER(?)
     LIMIT 1
   `).bind(phone, lookupCode).first<BookingRow>();
-  return row ? mapBooking(row) : null;
+  return row ? mapBooking(row, new Date().toISOString()) : null;
 }
 
 export async function listMemberBookings(memberId: string): Promise<FarmBookingRecord[]> {
   const db = await getDb();
   const result = await db.prepare(`
-    SELECT b.booking_number, b.lookup_code, b.contact_name, b.contact_phone, b.group_name,
-           b.adult_count, b.child_count, b.infant_count, b.total_people,
-           b.plant_count, b.meal_count, b.amount_twd, b.booking_status,
-           b.payment_status, b.created_at, s.starts_at, s.ends_at, e.name AS experience
-    FROM farm_bookings b
-    JOIN farm_slots s ON s.id = b.slot_id
-    JOIN farm_experiences e ON e.id = s.experience_id
+    ${BOOKING_SELECT}
     WHERE b.customer_member_id = ? AND b.cancelled_at IS NULL
     ORDER BY datetime(s.starts_at) DESC
   `).bind(memberId).all<BookingRow>();
-  return (result.results ?? []).map(mapBooking);
+  const now = new Date().toISOString();
+  return (result.results ?? []).map((row) => mapBooking(row, now));
 }
