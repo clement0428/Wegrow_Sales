@@ -54,6 +54,45 @@
 .date-pills { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
 .date-pills button { min-height: 44px; border: 1px solid #d5d5d0; border-radius: 3px; background: #fff; color: #555; font-weight: 700; }
 .date-pills button.active { background: #4d4d4d; border-color: #4d4d4d; color: #fff; }
+
+/* FarmDateCalendar — 客戶日曆(月/週) */
+.farm-calendar { display: flex; flex-direction: column; gap: 12px; }
+.calendar-legend { display: flex; flex-wrap: wrap; gap: 12px; font-size: 12px; color: #666; }
+.legend-item { display: inline-flex; align-items: center; gap: 5px; }
+.legend-item i { width: 10px; height: 10px; border-radius: 2px; display: inline-block; }
+.legend-item svg { color: #999; }
+.legend-available i { background: #fff; border: 1px solid #b7b7b0; }
+.legend-has_group i { background: #e2cf35; border: 1px solid #cbb92e; }
+.legend-full i { background: #ececea; border: 1px solid #cfcfca; }
+.legend-not_open i { background: #f7f7f5; border: 1px dashed #d5d5d0; }
+.legend-mine svg { color: #4a4a4a; }
+.calendar-toolbar { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 10px; }
+.calendar-nav { display: flex; align-items: center; gap: 10px; }
+.calendar-nav button { display: inline-flex; align-items: center; justify-content: center; width: 30px; height: 30px; border: 1px solid #d5d5d0; border-radius: 3px; background: #fff; color: #555; }
+.calendar-nav button:hover { background: #f4f4f1; }
+.calendar-nav strong { font-size: 14px; color: #333; min-width: 96px; text-align: center; }
+.calendar-mode-switch { display: flex; gap: 6px; }
+.calendar-mode-switch button { min-height: 30px; padding: 0 12px; border: 1px solid #d5d5d0; border-radius: 3px; background: #fff; color: #555; font-size: 12px; font-weight: 700; }
+.calendar-mode-switch button.active { background: #4d4d4d; border-color: #4d4d4d; color: #fff; }
+.calendar-mode-switch button:hover:not(.active) { background: #f4f4f1; }
+.calendar-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; }
+.calendar-head { text-align: center; font-size: 11px; color: #999; padding: 4px 0; }
+.calendar-cell { position: relative; aspect-ratio: 1 / 1; min-height: 38px; display: flex; align-items: center; justify-content: center; gap: 2px; border: 1px solid #e5e5e0; border-radius: 3px; background: #fff; color: #444; font-size: 12px; }
+.calendar-grid.week .calendar-cell { aspect-ratio: auto; min-height: 52px; }
+.calendar-cell.status-available:not(:disabled):hover { border-color: #b7b7b0; background: #fafaf7; }
+.calendar-cell.status-has_group { background: #fdf9de; border-color: #e2cf35; font-weight: 700; }
+.calendar-cell.status-has_group:hover { background: #faf3bd; }
+.calendar-cell.status-full { background: #ececea; border-color: #dcdcd7; color: #aaa; cursor: not-allowed; }
+.calendar-cell.status-not_open, .calendar-cell.status-past { background: #f9f9f7; border-color: #ececea; color: #ccc; cursor: not-allowed; }
+.calendar-cell.dim { opacity: 0.35; }
+.calendar-cell.selected { border-color: #4d4d4d; box-shadow: inset 0 0 0 1px #4d4d4d; }
+.calendar-cell.mine { box-shadow: inset 0 0 0 1px #4a4a4a; }
+.calendar-cell.selected.mine { box-shadow: inset 0 0 0 2px #4d4d4d; }
+.calendar-cell:disabled { cursor: not-allowed; }
+.cell-num { line-height: 1; }
+.cell-icon { position: absolute; top: 2px; right: 2px; }
+.cell-icon.mine-icon { top: auto; bottom: 2px; right: 2px; color: #4a4a4a; }
+
 .farm-app .summary-strip, .farm-app .price-box { background: #faf6cc; border-color: #e2cf35; }
 .farm-app .primary-button { background: #4b4b4b; color: #fff; }
 .farm-app .primary-button:hover { background: #333; }
@@ -334,6 +373,34 @@ button:disabled { cursor: not-allowed; opacity: .45; }
 .policy-list input { width: 80px; padding: 10px; border: 1px solid var(--line); text-align: center; }
 .verified-line { display: flex; align-items: center; gap: 8px; padding: 12px; background: #eef5f0; color: var(--green); font-weight: 700; }
 .checklist { margin: 20px 0 0; padding-left: 22px; color: var(--muted); line-height: 2; }
+
+.admin-whoami { font-size: 13px; color: var(--muted); }
+.data-connection-row { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin-bottom: 16px; font-size: 12px; }
+.conn-pill { display: inline-flex; align-items: center; gap: 6px; padding: 5px 10px; border-radius: 3px; font-weight: 700; background: #eef5f0; color: var(--green); }
+.conn-pill svg { width: 14px; height: 14px; }
+.conn-loading { background: #f0f0f0; color: var(--muted); }
+.conn-error { background: #fff0ee; color: var(--red); }
+.conn-notready { background: #f0f0f0; color: var(--muted); font-weight: 500; }
+.conn-time { color: var(--muted); }
+.spin { animation: admin-spin 1s linear infinite; }
+@keyframes admin-spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+.week-nav { display: flex; gap: 8px; }
+.day-loading, .day-empty { display: block; margin-top: 12px; font-size: 12px; color: var(--muted); }
+.calendar-session.open { background: #f5f6f1; }
+.status-filter-row { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 18px; }
+.status-filter { padding: 6px 12px; border-radius: 999px; border: 1px solid var(--line); background: #fff; font-size: 12px; font-weight: 700; color: var(--muted); cursor: pointer; }
+.status-filter.active { border-color: var(--green-2); color: var(--green); background: #eef5f0; }
+.status-b-hold { background: #eef2ff; color: #3a4ba0; }
+.status-b-pending_payment { background: #fff8d6; color: #785d00; }
+.status-b-confirmed { background: #eef5f0; color: var(--green); }
+.status-b-arrived { background: #e6f2ff; color: #1c5a99; }
+.status-b-completed { background: #ece9ff; color: #4a3b99; }
+.status-b-cancelled { background: #f0f0f0; color: var(--muted); }
+.status-b-exception { background: #fff0ee; color: var(--red); }
+.action-error { display: flex; align-items: center; gap: 8px; padding: 12px; margin-bottom: 14px; background: #fff0ee; color: var(--red); font-size: 13px; }
+.order-actions { display: flex; gap: 6px; flex-wrap: wrap; }
+.order-actions button { padding: 5px 10px; border: 1px solid var(--line); border-radius: 3px; background: #fff; font-size: 12px; font-weight: 700; cursor: pointer; }
+.order-actions button:hover { border-color: var(--green-2); color: var(--green); }
 
 @media (max-width: 900px) {
   .admin-shell { grid-template-columns: 1fr; }

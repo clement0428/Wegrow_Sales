@@ -1,0 +1,130 @@
+import { z } from "zod";
+import { requireAdmin } from "@/lib/auth/current-member";
+import { getDb } from "@/lib/db/client";
+import { newId } from "@/lib/db/uuid";
+import { reminderAtForVisit, reminderDedupeKey } from "@/lib/farm/reminders";
+
+const bodySchema = z.object({
+  action: z.enum(["confirm", "cancel", "check_in", "complete"]),
+  reason: z.string().trim().max(500).optional().default(""),
+});
+
+// Each action's atomic precondition, enforced in the UPDATE's WHERE clause
+// (not "read state, then decide, then write") so two concurrent admin
+// actions on the same booking can't both apply — matches the same
+// atomic-conditional-update discipline already used for capacity checks in
+// /api/farm/bookings.
+const TRANSITIONS: Record<string, { set: string; where: string; from: string; to: string }> = {
+  confirm: {
+    set: "booking_status = 'confirmed', updated_at = ?",
+    where: "booking_status = 'requested' AND cancelled_at IS NULL",
+    from: "requested",
+    to: "confirmed",
+  },
+  cancel: {
+    set: "cancelled_at = ?, updated_at = ?",
+    where: "cancelled_at IS NULL AND arrived_at IS NULL",
+    from: "*",
+    to: "cancelled",
+  },
+  check_in: {
+    set: "arrived_at = ?, updated_at = ?",
+    where: "booking_status = 'confirmed' AND cancelled_at IS NULL AND arrived_at IS NULL",
+    from: "confirmed",
+    to: "arrived",
+  },
+  complete: {
+    set: "completed_at = ?, updated_at = ?",
+    where: "arrived_at IS NOT NULL AND completed_at IS NULL",
+    from: "arrived",
+    to: "completed",
+  },
+};
+
+export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
+  const member = await requireAdmin();
+  const { id } = await params;
+  const parsed = bodySchema.safeParse(await request.json().catch(() => null));
+  if (!parsed.success) return Response.json({ error: "請求格式錯誤" }, { status: 400 });
+  const { action, reason } = parsed.data;
+
+  const db = await getDb();
+  const now = new Date().toISOString();
+  const transition = TRANSITIONS[action];
+
+  const before = await db
+    .prepare("SELECT booking_status, cancelled_at, arrived_at, completed_at, customer_member_id, visit_version, slot_id FROM farm_bookings WHERE id = ?")
+    .bind(id)
+    .first<{
+      booking_status: string;
+      cancelled_at: string | null;
+      arrived_at: string | null;
+      completed_at: string | null;
+      customer_member_id: string | null;
+      visit_version: number;
+      slot_id: string;
+    }>();
+  if (!before) return Response.json({ error: "找不到這筆預約" }, { status: 404 });
+
+  // action's own params bound first (1 or 2 `?` in `set`), then id last.
+  const setParamCount = (transition.set.match(/\?/g) ?? []).length;
+  const setParams = setParamCount === 2 ? [now, now] : [now];
+  const result = await db
+    .prepare(`UPDATE farm_bookings SET ${transition.set} WHERE id = ? AND (${transition.where})`)
+    .bind(...setParams, id)
+    .run();
+
+  if (!result.meta.changes) {
+    return Response.json(
+      { error: `這筆預約目前的狀態不允許「${action}」這個動作，可能已被其他管理員異動過，請重新整理。`, code: "state_conflict" },
+      { status: 409 },
+    );
+  }
+
+  await db
+    .prepare(
+      `INSERT INTO farm_audit_log (id, entity_type, entity_id, actor_type, actor_id, action, from_state, to_state, reason, created_at)
+       VALUES (?, 'farm_booking', ?, 'staff', ?, ?, ?, ?, ?, ?)`,
+    )
+    .bind(newId(), id, member.id, action, transition.from === "*" ? before.booking_status : transition.from, transition.to, reason, now)
+    .run();
+
+  if (action === "confirm") {
+    if (before.customer_member_id) {
+      const slot = await db.prepare("SELECT starts_at FROM farm_slots WHERE id = ?").bind(before.slot_id).first<{ starts_at: string }>();
+      if (slot) {
+        const scheduledAt = reminderAtForVisit(slot.starts_at).toISOString();
+        const retryKey = reminderDedupeKey(id, before.visit_version);
+        await db
+          .prepare(
+            `INSERT OR IGNORE INTO farm_notification_outbox
+             (id, booking_id, channel, notification_type, recipient_id, content_snapshot_json, retry_key, status, attempt_count, scheduled_at, next_attempt_at, created_at)
+             VALUES (?, ?, 'line', 'day_before_reminder', ?, ?, ?, 'queued', 0, ?, ?, ?)`,
+          )
+          .bind(
+            newId(),
+            id,
+            before.customer_member_id,
+            JSON.stringify({ bookingId: id, visitVersion: before.visit_version, note: "LINE Messaging API credentials not configured — this row queues, actual send is BLOCKED until credentials exist. See jobs/reminders route." }),
+            retryKey,
+            scheduledAt,
+            scheduledAt,
+            now,
+          )
+          .run();
+      }
+    }
+  }
+
+  if (action === "cancel") {
+    // 規格「改期取消舊提醒」：this booking's own reminder(s) should stop, not
+    // send after the visit no longer exists. Mark rather than delete, for
+    // the same audit-trail reason bookings themselves are never deleted.
+    await db
+      .prepare("UPDATE farm_notification_outbox SET status = 'cancelled' WHERE booking_id = ? AND status = 'queued'")
+      .bind(id)
+      .run();
+  }
+
+  return Response.json({ ok: true, action, bookingId: id });
+}

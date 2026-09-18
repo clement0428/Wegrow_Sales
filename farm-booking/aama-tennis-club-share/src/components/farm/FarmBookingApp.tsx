@@ -14,10 +14,11 @@ import {
   PLANT_PRICE_TWD,
   TICKET_PRICE_TWD,
 } from "@/lib/farm/pricing";
+import FarmDateCalendar from "./FarmDateCalendar";
 
 export type FarmView = "booking" | "mine" | "info" | "contact";
 
-type Slot = {
+export type Slot = {
   id: string;
   startsAt: string;
   endsAt: string;
@@ -26,6 +27,8 @@ type Slot = {
   available: boolean;
   experience: string;
   ticketRateBps: number;
+  confirmedGroupCount: number;
+  holdGroupCount: number;
 };
 
 type AvailabilityPayload = {
@@ -308,9 +311,12 @@ export default function FarmBookingApp({ initialView = "booking" }: { initialVie
                 {availability === "ready" && slots.length === 0 && <div className="empty-state"><strong>目前沒有可直接預約的場次</strong><span>週五、週六、週日請聯繫客服討論開放時間。</span><a href="https://line.me/R/ti/p/@647hlrhw" target="_blank" rel="noreferrer"><MessageCircle /> 聯繫官方 LINE</a></div>}
                 {availability === "ready" && slots.length > 0 && (
                   <>
-                    <div className="date-pills">
-                      {openDates.map((date) => <button key={date.key} className={activeDate === date.key ? "active" : ""} onClick={() => { setDateFilter(date.key); setSlotId(null); }}>{date.label}</button>)}
-                    </div>
+                    <FarmDateCalendar
+                      slots={slots}
+                      activeDate={activeDate}
+                      onSelectDate={(key) => { setDateFilter(key); setSlotId(null); }}
+                      showMine={lineIdentity.status === "ready"}
+                    />
                     <div className="slot-list">
                       {availableSlots.map((slot) => {
                         const selected = slot.id === slotId;
@@ -407,7 +413,9 @@ function MyBookingsView({ identity, onBack }: { identity: LineIdentity; onBack: 
   useEffect(() => {
     if (identity.status !== "ready") return;
     let cancelled = false;
-    setStatus("loading");
+    // No synchronous setState here (react-hooks/set-state-in-effect) — status
+    // only resolves via .then()/.catch() below; nothing renders differently
+    // for "idle" vs "loading" on this path.
     fetch("/api/farm/bookings?mine=1")
       .then(async (response) => {
         const result = await response.json() as { bookings?: BookingRecord[]; error?: string };

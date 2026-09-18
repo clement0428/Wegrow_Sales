@@ -6,13 +6,14 @@ import { isAllowedBookingSlot, ticketRateBpsForSlot } from "./visit-policy";
 export type PublicFarmSlot = {
   id: string; startsAt: string; endsAt: string; existingGroups: number[];
   maxNewGroupSize: number; available: boolean; experience: string;
-  ticketRateBps: number;
+  ticketRateBps: number; confirmedGroupCount: number; holdGroupCount: number;
 };
 
 type SlotRow = {
   id: string; starts_at: string; ends_at: string; experience: string;
   max_groups: number; limit_one_group: number; limit_two_groups: number;
   limit_three_groups: number; group_sizes: string | null;
+  confirmed_group_count: number; hold_group_count: number;
 };
 
 function rowPolicy(row: SlotRow): CapacityPolicy {
@@ -33,17 +34,22 @@ export async function listPublicSlots(people: number): Promise<PublicFarmSlot[]>
            GROUP_CONCAT(CASE
              WHEN b.booking_status IN ('requested','confirmed') THEN b.total_people
              WHEN b.booking_status = 'pending_payment' AND datetime(b.hold_expires_at) > datetime(?) THEN b.total_people
-             ELSE NULL END) AS group_sizes
+             ELSE NULL END) AS group_sizes,
+           COALESCE(SUM(CASE WHEN b.booking_status = 'confirmed' THEN 1 ELSE 0 END), 0) AS confirmed_group_count,
+           COALESCE(SUM(CASE
+             WHEN b.booking_status = 'requested' THEN 1
+             WHEN b.booking_status = 'pending_payment' AND datetime(b.hold_expires_at) > datetime(?) THEN 1
+             ELSE 0 END), 0) AS hold_group_count
     FROM farm_slots s
     JOIN farm_experiences e ON e.id = s.experience_id AND e.active = 1
     JOIN farm_capacity_policies p ON p.id = s.capacity_policy_id
-    LEFT JOIN farm_bookings b ON b.slot_id = s.id
+    LEFT JOIN farm_bookings b ON b.slot_id = s.id AND b.cancelled_at IS NULL
     WHERE s.status = 'open'
       AND datetime(s.starts_at) > datetime(?)
       AND datetime(s.booking_cutoff_at) > datetime(?)
     GROUP BY s.id
     ORDER BY datetime(s.starts_at)
-  `).bind(now, now, now).all<SlotRow>();
+  `).bind(now, now, now, now).all<SlotRow>();
 
   return (result.results ?? []).filter((row) => isAllowedBookingSlot(row.starts_at, row.ends_at)).map((row) => {
     const existingGroups = row.group_sizes
@@ -54,6 +60,7 @@ export async function listPublicSlots(people: number): Promise<PublicFarmSlot[]>
       id: row.id, startsAt: row.starts_at, endsAt: row.ends_at, existingGroups,
       maxNewGroupSize: maximum, available: maximum >= people, experience: row.experience,
       ticketRateBps: ticketRateBpsForSlot(row.starts_at),
+      confirmedGroupCount: row.confirmed_group_count, holdGroupCount: row.hold_group_count,
     };
   });
 }
