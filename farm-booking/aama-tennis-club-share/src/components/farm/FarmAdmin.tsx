@@ -7,6 +7,7 @@ import {
   AlertTriangle, ArrowLeft, CalendarDays, CheckCircle2, CircleDollarSign,
   Clock3, RefreshCw, Settings2, TicketCheck, Users, XCircle,
 } from "lucide-react";
+import type { StatusBucket } from "@/lib/farm/status";
 
 type AdminSession = {
   id: string; startsAt: string; endsAt: string; status: string; experience: string;
@@ -16,7 +17,6 @@ type AdminSession = {
   activeGroups: number; activePeople: number;
 };
 
-type StatusBucket = "hold" | "pending_payment" | "confirmed" | "arrived" | "completed" | "cancelled" | "exception";
 const STATUS_LABELS: Record<StatusBucket, string> = {
   hold: "暫留", pending_payment: "待付款", confirmed: "已確認", arrived: "已到場",
   completed: "已完成", cancelled: "已取消", exception: "異常",
@@ -197,6 +197,11 @@ function OrdersView() {
   const retry = useCallback(() => { setState("loading"); setReloadTick((n) => n + 1); }, []);
   const selectStatus = useCallback((bucket: StatusBucket | null) => { setState("loading"); setStatusFilter(bucket); }, []);
 
+  const [reschedulingId, setReschedulingId] = useState<string | null>(null);
+  const [slotOptions, setSlotOptions] = useState<AdminSession[] | null>(null);
+  const [slotOptionsState, setSlotOptionsState] = useState<"idle" | "loading" | "ready" | "error">("idle");
+  const [rescheduleTarget, setRescheduleTarget] = useState("");
+
   useEffect(() => {
     const controller = new AbortController();
     const qs = statusFilter ? `?status=${statusFilter}` : "";
@@ -229,6 +234,43 @@ function OrdersView() {
     retry();
   }
 
+  // Lazily fetched once (not in an effect — triggered from the "改期" click
+  // handler, matching the same avoid-synchronous-setState-in-effect
+  // discipline used elsewhere in this file) and reused across all rows.
+  async function openReschedule(bookingId: string) {
+    setActionError(null);
+    setReschedulingId(bookingId);
+    setRescheduleTarget("");
+    if (slotOptionsState === "ready" || slotOptionsState === "loading") return;
+    setSlotOptionsState("loading");
+    const from = dayKey(new Date());
+    const to = dayKey(addDays(new Date(), 90));
+    try {
+      const res = await fetch(`/api/farm/admin/sessions?from=${from}&to=${to}`);
+      if (!res.ok) throw new Error(String(res.status));
+      const data = await res.json() as { sessions: AdminSession[] };
+      setSlotOptions(data.sessions.filter((s) => s.status === "open"));
+      setSlotOptionsState("ready");
+    } catch {
+      setSlotOptionsState("error");
+    }
+  }
+
+  async function runReschedule(bookingId: string) {
+    if (!rescheduleTarget) return;
+    setActionError(null);
+    const res = await fetch(`/api/farm/admin/bookings/${bookingId}/reschedule`, {
+      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ newSlotId: rescheduleTarget }),
+    });
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({})) as { error?: string };
+      setActionError(body.error ?? `改期失敗（${res.status}）`);
+      return;
+    }
+    setReschedulingId(null);
+    retry();
+  }
+
   return <div className="admin-section">
     <DataConnectionRow state={state} lastUpdated={lastUpdated} onRetry={retry} />
     <div className="admin-section-title"><div><h2>預約訂單</h2><p>預約狀態與付款狀態分開，不用付款成功假裝預約一定成立。</p></div></div>
@@ -247,18 +289,41 @@ function OrdersView() {
         {state === "loading" && <div className="empty-admin"><RefreshCw className="spin" /><strong>載入中…</strong></div>}
         {state === "ready" && (bookings ?? []).length === 0 && <div className="empty-admin"><TicketCheck /><strong>這個篩選條件下沒有訂單</strong></div>}
         {(bookings ?? []).map((b) => (
-          <div className="order-row" key={b.id}>
-            <strong>{b.bookingNumber}</strong>
-            <span>{b.contactName}{b.groupName ? `（${b.groupName}）` : ""}</span>
-            <span>{dateFmt.format(new Date(b.startsAt))} {timeFmt.format(new Date(b.startsAt))}</span>
-            <span>{b.totalPeople} 位</span>
-            <span className={`status-pill status-b-${b.statusBucket}`}>{STATUS_LABELS[b.statusBucket]}</span>
-            <span className="order-actions">
-              {b.statusBucket === "hold" && <button onClick={() => runAction(b.id, "confirm")}>確認</button>}
-              {(b.statusBucket === "hold" || b.statusBucket === "confirmed") && <button onClick={() => runAction(b.id, "cancel")}>取消</button>}
-              {b.statusBucket === "confirmed" && <button onClick={() => runAction(b.id, "check_in")}>報到</button>}
-              {b.statusBucket === "arrived" && <button onClick={() => runAction(b.id, "complete")}>完成</button>}
-            </span>
+          <div className="order-row-group" key={b.id}>
+            <div className="order-row">
+              <strong>{b.bookingNumber}</strong>
+              <span>{b.contactName}{b.groupName ? `（${b.groupName}）` : ""}</span>
+              <span>{dateFmt.format(new Date(b.startsAt))} {timeFmt.format(new Date(b.startsAt))}</span>
+              <span>{b.totalPeople} 位</span>
+              <span className={`status-pill status-b-${b.statusBucket}`}>{STATUS_LABELS[b.statusBucket]}</span>
+              <span className="order-actions">
+                {b.statusBucket === "hold" && <button onClick={() => runAction(b.id, "confirm")}>確認</button>}
+                {(b.statusBucket === "hold" || b.statusBucket === "confirmed") && <button onClick={() => runAction(b.id, "cancel")}>取消</button>}
+                {(b.statusBucket === "hold" || b.statusBucket === "confirmed") && <button onClick={() => openReschedule(b.id)}>改期</button>}
+                {b.statusBucket === "confirmed" && <button onClick={() => runAction(b.id, "check_in")}>報到</button>}
+                {b.statusBucket === "arrived" && <button onClick={() => runAction(b.id, "complete")}>完成</button>}
+              </span>
+            </div>
+            {reschedulingId === b.id && (
+              <div className="reschedule-row">
+                {slotOptionsState === "loading" && <span><RefreshCw className="spin" size={14} /> 載入可選時段中…</span>}
+                {slotOptionsState === "error" && <span className="action-error-inline">時段清單讀取失敗</span>}
+                {slotOptionsState === "ready" && (
+                  <>
+                    <select value={rescheduleTarget} onChange={(e) => setRescheduleTarget(e.target.value)}>
+                      <option value="">選擇新時段…</option>
+                      {(slotOptions ?? []).map((s) => (
+                        <option key={s.id} value={s.id}>
+                          {dateFmt.format(new Date(s.startsAt))} {timeFmt.format(new Date(s.startsAt))}（{s.activeGroups}/{s.maxGroups} 團・{s.activePeople}/{s.peopleLimit} 人）
+                        </option>
+                      ))}
+                    </select>
+                    <button className="secondary-button" disabled={!rescheduleTarget} onClick={() => runReschedule(b.id)}>確定改期</button>
+                  </>
+                )}
+                <button className="secondary-button" onClick={() => setReschedulingId(null)}>取消</button>
+              </div>
+            )}
           </div>
         ))}
       </div>
