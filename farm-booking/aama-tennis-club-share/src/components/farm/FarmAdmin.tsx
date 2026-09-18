@@ -51,7 +51,7 @@ function CalendarView() {
       <Metric icon={<AlertTriangle />} label="需要處理" value="2" note="付款 1／退款 1" alert />
     </div>
     <div className="admin-section">
-      <div className="admin-section-title"><div><h2>2026 年 9 月</h2><p>一眼看每時段團數與總人數，不用固定 50 人當分母。</p></div><button className="secondary-button">新增開放時段</button></div>
+      <div className="admin-section-title"><div><h2>2026 年 9 月</h2><p>一眼看每時段團數與總人數，上限固定 30 人、最多 2 團。</p></div><button className="secondary-button">新增開放時段</button></div>
       <div className="week-grid">
         {["一 14", "二 15", "三 16", "四 17", "五 18", "六 19", "日 20"].map((day, index) => <div key={day} className={index > 4 ? "day weekend" : "day"}><strong>{day}</strong>{index === 5 && <><Session time="09:30" detail="0 團／0 人" tone="open" /><Session time="14:00" detail="1 團／20 人" tone="busy" /></>}{index === 6 && <Session time="09:30" detail="2 團／10 人" tone="full" />}</div>)}
       </div>
@@ -72,7 +72,7 @@ function OrdersView() {
 
 function SettingsView() {
   return <div className="settings-columns">
-    <div className="admin-section"><h2>容量政策</h2><p>此規則已依使用者確認固定；變更時建立新版本，不回寫舊訂單。</p><div className="policy-list"><label>1 團總人數上限<input value="50" readOnly /></label><label>2 團總人數上限<input value="30" readOnly /></label><label>3 團總人數上限<input value="15" readOnly /></label></div><div className="verified-line"><CheckCircle2 />規則版本 V1：50／30／15</div></div>
+    <div className="admin-section"><h2>容量政策</h2><p>此規則已依使用者確認固定；變更時建立新版本，不回寫舊訂單。</p><div className="policy-list"><label>每時段總人數上限<input value="30" readOnly /></label><label>每時段最多團數<input value="2" readOnly /></label></div><div className="verified-line"><CheckCircle2 />規則版本 V2：每時段 30 人／最多 2 團，不分團數分級</div></div>
     <div className="admin-section"><h2>待正式核定</h2><ul className="checklist"><li>成人、兒童與幼兒票價及年齡</li><li>付款保留時間（開發預設 15 分鐘）</li><li>前一天提醒時間（開發預設 18:00）</li><li>地址、導航、雨天、取消與退款政策</li><li>LINE／金流／Google Calendar 憑證</li></ul></div>
   </div>;
 }

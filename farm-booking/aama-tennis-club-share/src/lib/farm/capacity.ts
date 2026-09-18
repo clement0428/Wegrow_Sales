@@ -1,6 +1,9 @@
+// 2026-09-18: flat rule approved by Clement, overrides the old tiered
+// 1-team/50, 2-team/30, 3-team/15 rule. Every session caps at 30 total
+// people AND at most 2 groups — not tiered by group count.
 export const DEFAULT_CAPACITY_POLICY = {
-  maxGroups: 3,
-  totalLimitByGroupCount: { 1: 50, 2: 30, 3: 15 },
+  maxGroups: 2,
+  totalLimitByGroupCount: { 1: 30, 2: 30 },
 } as const;
 
 export type CapacityPolicy = {

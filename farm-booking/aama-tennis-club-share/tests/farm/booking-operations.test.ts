@@ -3,21 +3,23 @@ import { AtomicBookingLedger } from "@/lib/farm/booking-operations";
 import { buildFarmCalendar } from "@/lib/farm/calendar";
 
 describe("farm booking operation simulation", () => {
-  it("enforces 50 / 30 / 15 total capacity when a group is added", async () => {
+  it("enforces the flat 30-people / 2-group rule (2026-09-18, overrides the old tiered 50/30/15)", async () => {
     const oneGroup = new AtomicBookingLedger();
-    expect(await oneGroup.reserve("one-50", 50)).toMatchObject({ accepted: true });
-    expect(await oneGroup.reserve("one-51", 1)).toMatchObject({ accepted: false, reason: "capacity_exceeded" });
+    expect(await oneGroup.reserve("one-30", 30)).toMatchObject({ accepted: true });
+    expect(await oneGroup.reserve("one-31", 1)).toMatchObject({ accepted: false, reason: "capacity_exceeded" });
 
     const twoGroups = new AtomicBookingLedger();
     expect(await twoGroups.reserve("two-20", 20)).toMatchObject({ accepted: true });
     expect(await twoGroups.reserve("two-10", 10)).toMatchObject({ accepted: true });
     expect(await twoGroups.reserve("two-over", 1)).toMatchObject({ accepted: false });
 
-    const threeGroups = new AtomicBookingLedger();
-    await threeGroups.reserve("three-a", 5);
-    await threeGroups.reserve("three-b", 5);
-    expect(await threeGroups.reserve("three-c", 5)).toMatchObject({ accepted: true });
-    expect(await threeGroups.reserve("three-over", 1)).toMatchObject({ accepted: false });
+    const thirdGroupRejected = new AtomicBookingLedger();
+    await thirdGroupRejected.reserve("three-a", 5);
+    await thirdGroupRejected.reserve("three-b", 5);
+    // A 3rd group is rejected outright now, regardless of size — this is the
+    // key regression check against the old rule, which allowed a 3rd group
+    // up to 15 people.
+    expect(await thirdGroupRejected.reserve("three-c", 1)).toMatchObject({ accepted: false });
   });
 
   it("serializes concurrent reservations so only one competing group wins", async () => {
@@ -37,7 +39,7 @@ describe("farm booking operation simulation", () => {
     await ledger.confirm("cancel-me", "2026-09-16T01:01:00.000Z");
     expect(await ledger.reserve("blocked", 1)).toMatchObject({ accepted: false });
     expect(await ledger.cancel("cancel-me", "2026-09-16T01:02:00.000Z")).toBe(true);
-    expect(await ledger.reserve("replacement", 50)).toMatchObject({ accepted: true });
+    expect(await ledger.reserve("replacement", 30)).toMatchObject({ accepted: true });
     expect(ledger.getSalesEvents().map((event) => event.eventId)).toEqual([
       "cancel-me:1:booking.held",
       "cancel-me:1:booking.confirmed",

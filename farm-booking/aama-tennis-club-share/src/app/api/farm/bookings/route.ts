@@ -36,7 +36,11 @@ export async function POST(request: Request) {
   }
   const input = parsed.data;
   const totalPeople = input.adultCount + input.childCount + input.infantCount;
-  if (totalPeople > 50 || input.plantCount > totalPeople || input.mealCount > totalPeople) {
+  // 30 here is the flat per-session cap (2026-09-18 rule): even a single
+  // group can never exceed it, so this fails fast with a clear message
+  // instead of falling through to the generic capacity_changed 409 from
+  // the DB check below.
+  if (totalPeople > 30 || input.plantCount > totalPeople || input.mealCount > totalPeople) {
     return Response.json({ error: "人數或加購數量超出可接受範圍" }, { status: 400 });
   }
 
