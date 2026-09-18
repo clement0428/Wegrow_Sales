@@ -3,6 +3,7 @@ import { canCheckIn, isAdmin, requireStaff } from "@/lib/auth/current-member";
 import { getDb } from "@/lib/db/client";
 import { newId } from "@/lib/db/uuid";
 import { reminderAtForVisit, reminderDedupeKey } from "@/lib/farm/reminders";
+import { queueSalesSyncEvent } from "@/lib/sales/queue";
 
 const bodySchema = z.object({
   action: z.enum(["confirm", "cancel", "check_in", "complete"]),
@@ -119,6 +120,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
           .run();
       }
     }
+    await queueSalesSyncEvent(db, id, "booking_confirmed");
   }
 
   if (action === "cancel") {
@@ -129,6 +131,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
       .prepare("UPDATE farm_notification_outbox SET status = 'cancelled' WHERE booking_id = ? AND status = 'queued'")
       .bind(id)
       .run();
+    await queueSalesSyncEvent(db, id, "booking_cancelled");
   }
 
   return Response.json({ ok: true, action, bookingId: id });

@@ -4,6 +4,12 @@ const PUBLIC_PREFIXES = [
   "/login", "/api/auth", "/api/farm/availability", "/api/farm/bookings", "/api/farm/checkout",
   "/api/bookings", "/booking", "/my-bookings", "/visit-info", "/contact",
   "/_next", "/brand", "/favicon",
+  // Server-to-server job endpoints authenticate themselves via their own
+  // JOB_SECRET bearer-token check (timing-safe compare) — they must never
+  // require a browser session cookie, since the caller is a cron trigger,
+  // not a logged-in user. Without this, every call 307-redirected to
+  // /login before the route's own auth ever ran.
+  "/api/jobs",
 ];
 
 export function proxy(req: NextRequest) {

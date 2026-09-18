@@ -5,6 +5,7 @@ import { calculateVisitPrice } from "@/lib/farm/pricing";
 import { findBooking, listMemberBookings } from "@/lib/farm/repository";
 import { getCurrentMember } from "@/lib/auth/current-member";
 import { isAllowedBookingSlot, ticketRateBpsForSlot } from "@/lib/farm/visit-policy";
+import { queueSalesSyncEvent } from "@/lib/sales/queue";
 
 const createSchema = z.object({
   slotId: z.string().min(1).max(100),
@@ -146,6 +147,8 @@ export async function POST(request: Request) {
       code: "capacity_changed",
     }, { status: 409 });
   }
+
+  await queueSalesSyncEvent(db, id, "booking_created");
 
   const booking = await findBooking(input.phone, code);
   return Response.json({
