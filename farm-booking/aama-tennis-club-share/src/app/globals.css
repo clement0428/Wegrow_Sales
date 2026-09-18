@@ -444,3 +444,23 @@ button:disabled { cursor: not-allowed; opacity: .45; }
   .admin-section-title { align-items: flex-start; flex-direction: column; }
   .admin-search { width: 100%; }
 }
+
+/* PrepView — 準備工作彙總＋工作單 */
+.prep-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
+.prep-toolbar input[type="date"] { min-height: 38px; padding: 0 10px; border: 1px solid var(--line); border-radius: 3px; }
+.prep-session { margin: 20px 0; }
+.prep-session h3 { display: flex; align-items: center; gap: 6px; font-size: 15px; margin-bottom: 10px; }
+.prep-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.prep-table th, .prep-table td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--line); }
+.prep-table th { background: #f5f6f1; color: var(--muted); font-weight: 700; }
+.only-print { display: none; }
+.prep-print-header { margin-bottom: 18px; }
+
+@media print {
+  .no-print { display: none !important; }
+  .only-print { display: block !important; }
+  .admin-shell { display: block; }
+  .admin-main { padding: 0; }
+  .admin-section { padding: 0; }
+  .prep-table th { background: none; }
+}

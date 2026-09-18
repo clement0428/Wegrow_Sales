@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   AlertTriangle, ArrowLeft, CalendarDays, CheckCircle2, CircleDollarSign,
-  Clock3, RefreshCw, Settings2, TicketCheck, Users, XCircle,
+  Clock3, Printer, RefreshCw, Settings2, Sprout, TicketCheck, UtensilsCrossed, Users, XCircle,
 } from "lucide-react";
 import type { StatusBucket } from "@/lib/farm/status";
 
@@ -51,26 +51,29 @@ function dayKey(d: Date): string {
 }
 
 export default function FarmAdmin({ adminDisplayName }: { adminDisplayName: string }) {
-  const [tab, setTab] = useState<"calendar" | "orders" | "settings">("calendar");
+  const [tab, setTab] = useState<"calendar" | "orders" | "prep" | "settings">("calendar");
+  const tabTitle = tab === "calendar" ? "接待行事曆" : tab === "orders" ? "預約與訂單" : tab === "prep" ? "準備工作" : "營運設定";
   return (
     <main className="admin-shell">
-      <aside className="admin-sidebar">
+      <aside className="admin-sidebar no-print">
         <div className="admin-logo"><Image src="/brand/wegrow-logo.png" width={50} height={50} alt="WeGrow" /><span><strong>WeGrow</strong><small>農場預約管理</small></span></div>
         <nav>
           <button className={tab === "calendar" ? "active" : ""} onClick={() => setTab("calendar")}><CalendarDays />接待行事曆</button>
           <button className={tab === "orders" ? "active" : ""} onClick={() => setTab("orders")}><TicketCheck />預約與訂單</button>
+          <button className={tab === "prep" ? "active" : ""} onClick={() => setTab("prep")}><Sprout />準備工作</button>
           <button className={tab === "settings" ? "active" : ""} onClick={() => setTab("settings")}><Settings2 />營運設定</button>
         </nav>
         <Link href="/"><ArrowLeft />回到客戶預約頁</Link>
       </aside>
 
       <section className="admin-main">
-        <header className="admin-topbar"><div><span className="section-kicker">WEGROW FARM OPERATIONS</span><h1>{tab === "calendar" ? "接待行事曆" : tab === "orders" ? "預約與訂單" : "營運設定"}</h1></div><span className="admin-whoami">管理員：{adminDisplayName}</span></header>
+        <header className="admin-topbar no-print"><div><span className="section-kicker">WEGROW FARM OPERATIONS</span><h1>{tabTitle}</h1></div><span className="admin-whoami">管理員：{adminDisplayName}</span></header>
 
-        <div className="environment-warning"><AlertTriangle /><span><strong>部分功能未正式開通</strong> LINE Messaging API、LINE Pay、信用卡與 Google Calendar 尚未設定正式憑證；目前不接受真實付款，提醒僅會排入佇列但不會真的送出。</span></div>
+        <div className="environment-warning no-print"><AlertTriangle /><span><strong>部分功能未正式開通</strong> LINE Messaging API、LINE Pay、信用卡與 Google Calendar 尚未設定正式憑證；目前不接受真實付款，提醒僅會排入佇列但不會真的送出。</span></div>
 
         {tab === "calendar" && <CalendarView />}
         {tab === "orders" && <OrdersView />}
+        {tab === "prep" && <PrepView />}
         {tab === "settings" && <SettingsView />}
       </section>
     </main>
@@ -329,6 +332,89 @@ function OrdersView() {
       </div>
     )}
   </div>;
+}
+
+type PrepBooking = {
+  bookingNumber: string; contactName: string; groupName: string; totalPeople: number;
+  plantCount: number; mealCount: number; note: string; confirmed: boolean;
+};
+type PrepSession = { id: string; startsAt: string; endsAt: string; experience: string; bookings: PrepBooking[] };
+
+function PrepView() {
+  const [date, setDate] = useState(() => dayKey(new Date()));
+  const [sessions, setSessions] = useState<PrepSession[] | null>(null);
+  const [totals, setTotals] = useState<{ groups: number; people: number; plant: number; meal: number } | null>(null);
+  const [state, setState] = useState<"loading" | "ready" | "error">("loading");
+  const [reloadTick, setReloadTick] = useState(0);
+  const retry = useCallback(() => { setState("loading"); setReloadTick((n) => n + 1); }, []);
+  const changeDate = useCallback((next: string) => { setState("loading"); setDate(next); }, []);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    fetch(`/api/farm/admin/prep?date=${date}`, { signal: controller.signal })
+      .then(async (res) => {
+        if (!res.ok) throw new Error(String(res.status));
+        const data = await res.json() as { sessions: PrepSession[]; totals: { groups: number; people: number; plant: number; meal: number } };
+        setSessions(data.sessions);
+        setTotals(data.totals);
+        setState("ready");
+      })
+      .catch((error: unknown) => {
+        if (error instanceof DOMException && error.name === "AbortError") return;
+        setState("error");
+      });
+    return () => controller.abort();
+  }, [date, reloadTick]);
+
+  return (
+    <div className="admin-section">
+      <div className="admin-section-title no-print">
+        <div><h2>準備工作彙總＋工作單</h2><p>依日期彙總盆栽／餐飲數量，供現場備料與交接；可直接列印。</p></div>
+        <div className="prep-toolbar">
+          <input type="date" value={date} onChange={(e) => changeDate(e.target.value)} />
+          <button className="secondary-button" onClick={retry}><RefreshCw /> 重新整理</button>
+          <button className="secondary-button" onClick={() => window.print()}><Printer /> 列印工作單</button>
+        </div>
+      </div>
+      <div className="prep-print-header only-print"><h2>WeGrow 農場參訪工作單</h2><p>{dateFmt.format(new Date(`${date}T00:00:00+08:00`))}</p></div>
+
+      {state === "error" && <div className="empty-admin no-print"><AlertTriangle /><strong>資料讀取失敗</strong><span>請按「重新整理」</span></div>}
+      {state === "loading" && <div className="empty-admin no-print"><RefreshCw className="spin" /><strong>載入中…</strong></div>}
+      {state === "ready" && (sessions ?? []).length === 0 && <div className="empty-admin"><Sprout /><strong>這天沒有有效訂單</strong></div>}
+
+      {state === "ready" && (sessions ?? []).length > 0 && (
+        <>
+          <div className="admin-metrics no-print">
+            <Metric icon={<TicketCheck />} label="訂單數" value={String(totals?.groups ?? 0)} note="含暫留與待付款" />
+            <Metric icon={<Users />} label="總人數" value={String(totals?.people ?? 0)} note="" />
+            <Metric icon={<Sprout />} label="盆栽加購" value={String(totals?.plant ?? 0)} note="盆" />
+            <Metric icon={<UtensilsCrossed />} label="餐飲加購" value={String(totals?.meal ?? 0)} note="份" />
+          </div>
+          {(sessions ?? []).map((s) => (
+            <div key={s.id} className="prep-session">
+              <h3><Clock3 size={15} /> {timeFmt.format(new Date(s.startsAt))}–{timeFmt.format(new Date(s.endsAt))}　{s.experience}</h3>
+              <table className="prep-table">
+                <thead><tr><th>訂單編號</th><th>聯絡人／團名</th><th>人數</th><th>盆栽</th><th>餐飲</th><th>狀態</th><th>備註</th></tr></thead>
+                <tbody>
+                  {s.bookings.map((b) => (
+                    <tr key={b.bookingNumber}>
+                      <td>{b.bookingNumber}</td>
+                      <td>{b.contactName}{b.groupName ? `（${b.groupName}）` : ""}</td>
+                      <td>{b.totalPeople}</td>
+                      <td>{b.plantCount || "—"}</td>
+                      <td>{b.mealCount || "—"}</td>
+                      <td>{b.confirmed ? "已確認" : "待確認"}</td>
+                      <td>{b.note || "—"}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ))}
+        </>
+      )}
+    </div>
+  );
 }
 
 function SettingsView() {
