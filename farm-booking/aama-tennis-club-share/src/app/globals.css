@@ -374,7 +374,14 @@ button:disabled { cursor: not-allowed; opacity: .45; }
 .empty-admin { min-height: 180px; display: grid; place-items: center; align-content: center; gap: 6px; color: var(--muted); }
 .empty-admin svg { width: 32px; height: 32px; margin-bottom: 5px; }
 .order-table { overflow-x: auto; }
-.order-row { min-width: 820px; display: grid; grid-template-columns: 1.25fr 1.2fr .7fr .55fr .8fr 1fr; gap: 12px; align-items: center; min-height: 64px; padding: 0 12px; border-bottom: 1px solid var(--line); font-size: 13px; }
+.order-row { min-width: 960px; display: grid; grid-template-columns: 1.25fr 1.2fr .7fr .5fr .9fr .8fr 1.1fr; gap: 12px; align-items: center; min-height: 64px; padding: 0 12px; border-bottom: 1px solid var(--line); font-size: 13px; }
+.payment-cell { display: flex; flex-direction: column; gap: 2px; }
+.payment-cell small { color: var(--muted); }
+.payment-cell .outstanding { color: var(--red); }
+.payment-cell .settled { color: var(--green); }
+.payment-row { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; padding: 10px 12px 16px; background: #fafaf7; font-size: 12px; }
+.payment-row select, .payment-row input { min-height: 34px; padding: 0 8px; border: 1px solid var(--line); border-radius: 3px; background: #fff; font-size: 12px; }
+.payment-row input[type="text"] { min-width: 200px; }
 .order-head { min-height: 44px; background: #f5f6f1; color: var(--muted); font-weight: 700; }
 .status-pill { justify-self: start; padding: 5px 8px; border-radius: 3px; background: #eef5f0; color: var(--green); font-weight: 700; }
 .status-待付款 { background: #fff8d6; color: #785d00; }

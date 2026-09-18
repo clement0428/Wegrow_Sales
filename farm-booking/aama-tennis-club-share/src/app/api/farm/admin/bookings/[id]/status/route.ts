@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { requireAdmin } from "@/lib/auth/current-member";
+import { canCheckIn, isAdmin, requireStaff } from "@/lib/auth/current-member";
 import { getDb } from "@/lib/db/client";
 import { newId } from "@/lib/db/uuid";
 import { reminderAtForVisit, reminderDedupeKey } from "@/lib/farm/reminders";
@@ -42,11 +42,16 @@ const TRANSITIONS: Record<string, { set: string; where: string; from: string; to
 };
 
 export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
-  const member = await requireAdmin();
+  const member = await requireStaff();
   const { id } = await params;
   const parsed = bodySchema.safeParse(await request.json().catch(() => null));
   if (!parsed.success) return Response.json({ error: "請求格式錯誤" }, { status: 400 });
   const { action, reason } = parsed.data;
+
+  // 接待員只能「報到」（規格第4節：接待員可讀所需資訊、報到與工作單）；
+  // confirm／cancel／complete 影響容量或退款層級的決定，僅限管理員。
+  const allowed = action === "check_in" ? canCheckIn(member) : isAdmin(member);
+  if (!allowed) return Response.json({ error: "此角色無法執行這個動作" }, { status: 403 });
 
   const db = await getDb();
   const now = new Date().toISOString();

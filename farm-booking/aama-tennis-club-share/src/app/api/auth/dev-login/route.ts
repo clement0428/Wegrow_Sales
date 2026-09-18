@@ -9,7 +9,10 @@ export async function GET(req: Request) {
   if (!env.DEV_FAKE_LOGIN) return NextResponse.json({ error: "not enabled" }, { status: 404 });
   const url = new URL(req.url);
   const name = url.searchParams.get("name") ?? "測試成員";
-  const role = url.searchParams.get("admin") === "1" ? "admin" : "member";
+  const roleParam = url.searchParams.get("role");
+  const role = roleParam && ["admin", "reception", "kitchen", "member"].includes(roleParam)
+    ? roleParam
+    : url.searchParams.get("admin") === "1" ? "admin" : "member";
   const db = await getDb();
   await db.prepare(`
     INSERT INTO members (id, line_user_id, display_name, role, last_login_at)

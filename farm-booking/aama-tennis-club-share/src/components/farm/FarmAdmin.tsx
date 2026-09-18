@@ -8,6 +8,9 @@ import {
   Clock3, Printer, RefreshCw, Settings2, Sprout, TicketCheck, UtensilsCrossed, Users, XCircle,
 } from "lucide-react";
 import type { StatusBucket } from "@/lib/farm/status";
+import type { StaffRole } from "@/lib/auth/roles";
+
+const ROLE_LABELS: Record<StaffRole, string> = { admin: "管理員", reception: "接待員", kitchen: "餐飲／備料" };
 
 type AdminSession = {
   id: string; startsAt: string; endsAt: string; status: string; experience: string;
@@ -25,7 +28,8 @@ const STATUS_ORDER: StatusBucket[] = ["hold", "pending_payment", "confirmed", "a
 
 type AdminBooking = {
   id: string; bookingNumber: string; lookupCode: string; contactName: string; contactPhone: string;
-  groupName: string; totalPeople: number; amountTwd: number; bookingStatus: string; paymentStatus: string;
+  groupName: string; totalPeople: number; amountTwd: number; amountReceived: number; amountOutstanding: number;
+  bookingStatus: string; paymentStatus: string;
   statusBucket: StatusBucket; startsAt: string; endsAt: string; experience: string; createdAt: string;
 };
 
@@ -50,31 +54,36 @@ function dayKey(d: Date): string {
   return dayKeyFmt.format(d);
 }
 
-export default function FarmAdmin({ adminDisplayName }: { adminDisplayName: string }) {
-  const [tab, setTab] = useState<"calendar" | "orders" | "prep" | "settings">("calendar");
+export default function FarmAdmin({ adminDisplayName, role }: { adminDisplayName: string; role: StaffRole }) {
+  // 三種角色的分頁可見範圍（畫面層）——搭配每支 API 各自的角色檢查（見
+  // current-member.ts 的 canViewFullOrders／canCheckIn／canManageSchedule／
+  // canHandlePayment），兩邊各自獨立判斷，不是畫面藏了按鈕 API 就信任前端。
+  const canSeeCalendarOrOrders = role === "admin" || role === "reception";
+  const canSeeSettings = role === "admin";
+  const [tab, setTab] = useState<"calendar" | "orders" | "prep" | "settings">(canSeeCalendarOrOrders ? "calendar" : "prep");
   const tabTitle = tab === "calendar" ? "接待行事曆" : tab === "orders" ? "預約與訂單" : tab === "prep" ? "準備工作" : "營運設定";
   return (
     <main className="admin-shell">
       <aside className="admin-sidebar no-print">
         <div className="admin-logo"><Image src="/brand/wegrow-logo.png" width={50} height={50} alt="WeGrow" /><span><strong>WeGrow</strong><small>農場預約管理</small></span></div>
         <nav>
-          <button className={tab === "calendar" ? "active" : ""} onClick={() => setTab("calendar")}><CalendarDays />接待行事曆</button>
-          <button className={tab === "orders" ? "active" : ""} onClick={() => setTab("orders")}><TicketCheck />預約與訂單</button>
+          {canSeeCalendarOrOrders && <button className={tab === "calendar" ? "active" : ""} onClick={() => setTab("calendar")}><CalendarDays />接待行事曆</button>}
+          {canSeeCalendarOrOrders && <button className={tab === "orders" ? "active" : ""} onClick={() => setTab("orders")}><TicketCheck />預約與訂單</button>}
           <button className={tab === "prep" ? "active" : ""} onClick={() => setTab("prep")}><Sprout />準備工作</button>
-          <button className={tab === "settings" ? "active" : ""} onClick={() => setTab("settings")}><Settings2 />營運設定</button>
+          {canSeeSettings && <button className={tab === "settings" ? "active" : ""} onClick={() => setTab("settings")}><Settings2 />營運設定</button>}
         </nav>
         <Link href="/"><ArrowLeft />回到客戶預約頁</Link>
       </aside>
 
       <section className="admin-main">
-        <header className="admin-topbar no-print"><div><span className="section-kicker">WEGROW FARM OPERATIONS</span><h1>{tabTitle}</h1></div><span className="admin-whoami">管理員：{adminDisplayName}</span></header>
+        <header className="admin-topbar no-print"><div><span className="section-kicker">WEGROW FARM OPERATIONS</span><h1>{tabTitle}</h1></div><span className="admin-whoami">{ROLE_LABELS[role]}：{adminDisplayName}</span></header>
 
         <div className="environment-warning no-print"><AlertTriangle /><span><strong>部分功能未正式開通</strong> LINE Messaging API、LINE Pay、信用卡與 Google Calendar 尚未設定正式憑證；目前不接受真實付款，提醒僅會排入佇列但不會真的送出。</span></div>
 
-        {tab === "calendar" && <CalendarView />}
-        {tab === "orders" && <OrdersView />}
-        {tab === "prep" && <PrepView />}
-        {tab === "settings" && <SettingsView />}
+        {tab === "calendar" && canSeeCalendarOrOrders && <CalendarView />}
+        {tab === "orders" && canSeeCalendarOrOrders && <OrdersView role={role} />}
+        {tab === "prep" && <PrepView role={role} />}
+        {tab === "settings" && canSeeSettings && <SettingsView />}
       </section>
     </main>
   );
@@ -188,7 +197,9 @@ function CalendarView() {
   </>;
 }
 
-function OrdersView() {
+function OrdersView({ role }: { role: StaffRole }) {
+  const canManage = role === "admin"; // 改期／確認／取消：僅管理員
+  const canCheckIn = role === "admin" || role === "reception"; // 報到：管理員＋接待員都可以
   const [statusFilter, setStatusFilter] = useState<StatusBucket | null>(null);
   const [counts, setCounts] = useState<Record<StatusBucket, number> | null>(null);
   const [bookings, setBookings] = useState<AdminBooking[] | null>(null);
@@ -274,6 +285,38 @@ function OrdersView() {
     retry();
   }
 
+  const [payingId, setPayingId] = useState<string | null>(null);
+  const [payType, setPayType] = useState<"payment" | "refund">("payment");
+  const [payAmount, setPayAmount] = useState("");
+  const [payMethod, setPayMethod] = useState<"cash" | "transfer" | "other">("cash");
+  const [payReference, setPayReference] = useState("");
+
+  function openPayment(bookingId: string) {
+    setActionError(null);
+    setPayingId(bookingId);
+    setPayType("payment");
+    setPayAmount("");
+    setPayMethod("cash");
+    setPayReference("");
+  }
+
+  async function runPayment(bookingId: string) {
+    const amount = Number(payAmount);
+    if (!Number.isInteger(amount) || amount <= 0) { setActionError("請輸入正確的金額"); return; }
+    setActionError(null);
+    const res = await fetch(`/api/farm/admin/bookings/${bookingId}/payments`, {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ type: payType, amountTwd: amount, method: payMethod, referenceNote: payReference }),
+    });
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({})) as { error?: string };
+      setActionError(body.error ?? `登記失敗（${res.status}）`);
+      return;
+    }
+    setPayingId(null);
+    retry();
+  }
+
   return <div className="admin-section">
     <DataConnectionRow state={state} lastUpdated={lastUpdated} onRetry={retry} />
     <div className="admin-section-title"><div><h2>預約訂單</h2><p>預約狀態與付款狀態分開，不用付款成功假裝預約一定成立。</p></div></div>
@@ -288,7 +331,7 @@ function OrdersView() {
     {actionError && <div className="action-error"><AlertTriangle /> {actionError}</div>}
     {state === "error" ? <div className="empty-admin"><AlertTriangle /><strong>資料讀取失敗</strong><span>請按上方「重試」</span></div> : (
       <div className="order-table">
-        <div className="order-row order-head"><span>訂單</span><span>聯絡人</span><span>時段</span><span>人數</span><span>狀態</span><span>操作</span></div>
+        <div className="order-row order-head"><span>訂單</span><span>聯絡人</span><span>時段</span><span>人數</span><span>收款</span><span>狀態</span><span>操作</span></div>
         {state === "loading" && <div className="empty-admin"><RefreshCw className="spin" /><strong>載入中…</strong></div>}
         {state === "ready" && (bookings ?? []).length === 0 && <div className="empty-admin"><TicketCheck /><strong>這個篩選條件下沒有訂單</strong></div>}
         {(bookings ?? []).map((b) => (
@@ -298,13 +341,18 @@ function OrdersView() {
               <span>{b.contactName}{b.groupName ? `（${b.groupName}）` : ""}</span>
               <span>{dateFmt.format(new Date(b.startsAt))} {timeFmt.format(new Date(b.startsAt))}</span>
               <span>{b.totalPeople} 位</span>
+              <span className="payment-cell">
+                <small>應收 NT$ {b.amountTwd.toLocaleString()}</small>
+                <strong className={b.amountOutstanding > 0 ? "outstanding" : "settled"}>{b.amountOutstanding > 0 ? `未收 NT$ ${b.amountOutstanding.toLocaleString()}` : "已收清"}</strong>
+              </span>
               <span className={`status-pill status-b-${b.statusBucket}`}>{STATUS_LABELS[b.statusBucket]}</span>
               <span className="order-actions">
-                {b.statusBucket === "hold" && <button onClick={() => runAction(b.id, "confirm")}>確認</button>}
-                {(b.statusBucket === "hold" || b.statusBucket === "confirmed") && <button onClick={() => runAction(b.id, "cancel")}>取消</button>}
-                {(b.statusBucket === "hold" || b.statusBucket === "confirmed") && <button onClick={() => openReschedule(b.id)}>改期</button>}
-                {b.statusBucket === "confirmed" && <button onClick={() => runAction(b.id, "check_in")}>報到</button>}
-                {b.statusBucket === "arrived" && <button onClick={() => runAction(b.id, "complete")}>完成</button>}
+                {canManage && b.statusBucket === "hold" && <button onClick={() => runAction(b.id, "confirm")}>確認</button>}
+                {canManage && (b.statusBucket === "hold" || b.statusBucket === "confirmed") && <button onClick={() => runAction(b.id, "cancel")}>取消</button>}
+                {canManage && (b.statusBucket === "hold" || b.statusBucket === "confirmed") && <button onClick={() => openReschedule(b.id)}>改期</button>}
+                {canCheckIn && b.statusBucket === "confirmed" && <button onClick={() => runAction(b.id, "check_in")}>報到</button>}
+                {canManage && b.statusBucket === "arrived" && <button onClick={() => runAction(b.id, "complete")}>完成</button>}
+                {canManage && b.statusBucket !== "cancelled" && <button onClick={() => openPayment(b.id)}>收款</button>}
               </span>
             </div>
             {reschedulingId === b.id && (
@@ -327,6 +375,23 @@ function OrdersView() {
                 <button className="secondary-button" onClick={() => setReschedulingId(null)}>取消</button>
               </div>
             )}
+            {payingId === b.id && (
+              <div className="payment-row">
+                <select value={payType} onChange={(e) => setPayType(e.target.value as "payment" | "refund")}>
+                  <option value="payment">收款</option>
+                  <option value="refund">退款</option>
+                </select>
+                <input type="number" min={1} placeholder="金額 (NT$)" value={payAmount} onChange={(e) => setPayAmount(e.target.value)} />
+                <select value={payMethod} onChange={(e) => setPayMethod(e.target.value as "cash" | "transfer" | "other")}>
+                  <option value="cash">現金</option>
+                  <option value="transfer">轉帳</option>
+                  <option value="other">其他</option>
+                </select>
+                <input type="text" placeholder="交易末碼／憑證（選填）" value={payReference} onChange={(e) => setPayReference(e.target.value)} />
+                <button className="secondary-button" onClick={() => runPayment(b.id)}>登記</button>
+                <button className="secondary-button" onClick={() => setPayingId(null)}>取消</button>
+              </div>
+            )}
           </div>
         ))}
       </div>
@@ -336,14 +401,16 @@ function OrdersView() {
 
 type PrepBooking = {
   bookingNumber: string; contactName: string; groupName: string; totalPeople: number;
-  plantCount: number; mealCount: number; note: string; confirmed: boolean;
+  plantCount: number; mealCount: number; vegetarianMealCount: number | null; nonVegetarianMealCount: number | null;
+  note: string; confirmed: boolean;
 };
 type PrepSession = { id: string; startsAt: string; endsAt: string; experience: string; bookings: PrepBooking[] };
 
-function PrepView() {
+function PrepView({ role }: { role: StaffRole }) {
+  const showIdentity = role !== "kitchen"; // 餐飲／備料只看時間、份數與飲食備註
   const [date, setDate] = useState(() => dayKey(new Date()));
   const [sessions, setSessions] = useState<PrepSession[] | null>(null);
-  const [totals, setTotals] = useState<{ groups: number; people: number; plant: number; meal: number } | null>(null);
+  const [totals, setTotals] = useState<{ groups: number; people: number; plant: number; meal: number; vegetarianMeal: number; vegetarianUnconfirmedMeals: number } | null>(null);
   const [state, setState] = useState<"loading" | "ready" | "error">("loading");
   const [reloadTick, setReloadTick] = useState(0);
   const retry = useCallback(() => { setState("loading"); setReloadTick((n) => n + 1); }, []);
@@ -354,7 +421,7 @@ function PrepView() {
     fetch(`/api/farm/admin/prep?date=${date}`, { signal: controller.signal })
       .then(async (res) => {
         if (!res.ok) throw new Error(String(res.status));
-        const data = await res.json() as { sessions: PrepSession[]; totals: { groups: number; people: number; plant: number; meal: number } };
+        const data = await res.json() as { sessions: PrepSession[]; totals: { groups: number; people: number; plant: number; meal: number; vegetarianMeal: number; vegetarianUnconfirmedMeals: number } };
         setSessions(data.sessions);
         setTotals(data.totals);
         setState("ready");
@@ -388,21 +455,21 @@ function PrepView() {
             <Metric icon={<TicketCheck />} label="訂單數" value={String(totals?.groups ?? 0)} note="含暫留與待付款" />
             <Metric icon={<Users />} label="總人數" value={String(totals?.people ?? 0)} note="" />
             <Metric icon={<Sprout />} label="盆栽加購" value={String(totals?.plant ?? 0)} note="盆" />
-            <Metric icon={<UtensilsCrossed />} label="餐飲加購" value={String(totals?.meal ?? 0)} note="份" />
+            <Metric icon={<UtensilsCrossed />} label="餐飲：素食／已確認" value={`${totals?.vegetarianMeal ?? 0} 份`} note={totals && totals.vegetarianUnconfirmedMeals > 0 ? `另有 ${totals.vegetarianUnconfirmedMeals} 份飲食別未確認，需人工聯繫` : `餐飲共 ${totals?.meal ?? 0} 份`} alert={!!totals && totals.vegetarianUnconfirmedMeals > 0} />
           </div>
           {(sessions ?? []).map((s) => (
             <div key={s.id} className="prep-session">
               <h3><Clock3 size={15} /> {timeFmt.format(new Date(s.startsAt))}–{timeFmt.format(new Date(s.endsAt))}　{s.experience}</h3>
               <table className="prep-table">
-                <thead><tr><th>訂單編號</th><th>聯絡人／團名</th><th>人數</th><th>盆栽</th><th>餐飲</th><th>狀態</th><th>備註</th></tr></thead>
+                <thead><tr>{showIdentity && <><th>訂單編號</th><th>聯絡人／團名</th></>}{!showIdentity && <th>團別</th>}<th>人數</th><th>盆栽</th><th>餐飲（葷／素）</th><th>狀態</th><th>飲食備註</th></tr></thead>
                 <tbody>
-                  {s.bookings.map((b) => (
-                    <tr key={b.bookingNumber}>
-                      <td>{b.bookingNumber}</td>
-                      <td>{b.contactName}{b.groupName ? `（${b.groupName}）` : ""}</td>
+                  {s.bookings.map((b, i) => (
+                    <tr key={b.bookingNumber || `${s.id}-${i}`}>
+                      {showIdentity && <><td>{b.bookingNumber}</td><td>{b.contactName}{b.groupName ? `（${b.groupName}）` : ""}</td></>}
+                      {!showIdentity && <td>{b.contactName}</td>}
                       <td>{b.totalPeople}</td>
                       <td>{b.plantCount || "—"}</td>
-                      <td>{b.mealCount || "—"}</td>
+                      <td>{b.mealCount === 0 ? "—" : b.vegetarianMealCount === null ? `${b.mealCount} 份（素食未確認）` : `葷 ${b.nonVegetarianMealCount}／素 ${b.vegetarianMealCount}`}</td>
                       <td>{b.confirmed ? "已確認" : "待確認"}</td>
                       <td>{b.note || "—"}</td>
                     </tr>

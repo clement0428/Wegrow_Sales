@@ -80,6 +80,7 @@ export default function FarmBookingApp({ initialView = "booking" }: { initialVie
   const [infant, setInfant] = useState(0);
   const [plantCount, setPlantCount] = useState(0);
   const [mealCount, setMealCount] = useState(0);
+  const [vegetarianMealCount, setVegetarianMealCount] = useState(0);
   const [dateFilter, setDateFilter] = useState("");
   const [slotId, setSlotId] = useState<string | null>(null);
   const [slots, setSlots] = useState<Slot[]>([]);
@@ -186,6 +187,7 @@ export default function FarmBookingApp({ initialView = "booking" }: { initialVie
     setAvailabilityMessage("");
     setPlantCount((count) => Math.min(count, nextPeople));
     setMealCount((count) => Math.min(count, nextPeople));
+    setVegetarianMealCount((count) => Math.min(count, nextPeople));
     setSlotId(null);
   }
 
@@ -209,6 +211,7 @@ export default function FarmBookingApp({ initialView = "booking" }: { initialVie
           infantCount: infant,
           plantCount,
           mealCount,
+          vegetarianMealCount,
           contactName,
           phone: phone.replace(/\D/g, ""),
           groupName,
@@ -278,7 +281,10 @@ export default function FarmBookingApp({ initialView = "booking" }: { initialVie
                 <p className="section-help compact">先選數量，系統會把門票折抵金自動套用到本次選購。</p>
                 <div className="counter-list addon-list">
                   <Counter label="盆栽手作" note={`NT$ ${PLANT_PRICE_TWD}／盆`} value={plantCount} onMinus={() => setPlantCount(Math.max(0, plantCount - 1))} onPlus={() => setPlantCount(Math.min(people, plantCount + 1))} />
-                  <Counter label="現場餐飲" note={`NT$ ${MEAL_PRICE_TWD}／人`} value={mealCount} onMinus={() => setMealCount(Math.max(0, mealCount - 1))} onPlus={() => setMealCount(Math.min(people, mealCount + 1))} />
+                  <Counter label="現場餐飲" note={`NT$ ${MEAL_PRICE_TWD}／人`} value={mealCount} onMinus={() => { const next = Math.max(0, mealCount - 1); setMealCount(next); setVegetarianMealCount((v) => Math.min(v, next)); }} onPlus={() => setMealCount(Math.min(people, mealCount + 1))} />
+                  {mealCount > 0 && (
+                    <Counter label="其中素食份數" note="葷食份數 = 餐飲總份數 − 素食份數" value={vegetarianMealCount} onMinus={() => setVegetarianMealCount(Math.max(0, vegetarianMealCount - 1))} onPlus={() => setVegetarianMealCount(Math.min(mealCount, vegetarianMealCount + 1))} />
+                  )}
                 </div>
                 <div className="pricing-summary">
                   <PriceLine label={`門票 ${people} 人`} value={price.ticketSubtotalTwd} />
@@ -368,7 +374,7 @@ export default function FarmBookingApp({ initialView = "booking" }: { initialVie
                   <ReviewRow icon={<CalendarDays />} label="日期" value={fullDate.format(new Date(selectedSlot.startsAt))} />
                   <ReviewRow icon={<Clock3 />} label="時段" value={`${timeOnly.format(new Date(selectedSlot.startsAt))}–${timeOnly.format(new Date(selectedSlot.endsAt))}`} />
                   <ReviewRow icon={<Users />} label="人數" value={`${people} 位（成人 ${adult}、兒童 ${child}、幼兒 ${infant}）`} />
-                  <ReviewRow icon={<ShoppingBasket />} label="加選" value={`盆栽 ${plantCount}、餐飲 ${mealCount}`} />
+                  <ReviewRow icon={<ShoppingBasket />} label="加選" value={mealCount > 0 ? `盆栽 ${plantCount}、餐飲 ${mealCount}（素食 ${vegetarianMealCount}）` : `盆栽 ${plantCount}、餐飲 ${mealCount}`} />
                   <ReviewRow icon={<CreditCard />} label="付款" value="尚未開放付款" />
                 </div>
                 <div className="price-box"><span>預約金額</span><strong>NT$ {price.totalTwd.toLocaleString()}</strong><small>門票 NT$ {price.ticketUnitPriceTwd.toLocaleString()}／人，共 NT$ {price.ticketSubtotalTwd.toLocaleString()}；本次折抵 NT$ {price.creditAppliedTwd.toLocaleString()}。目前尚未開放付款。</small></div>

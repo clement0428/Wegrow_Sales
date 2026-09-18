@@ -6,6 +6,12 @@ import { getDb } from "@/lib/db/client";
 import { env } from "@/lib/env";
 import type { Member } from "@/lib/db/types";
 import { SESSION_COOKIE, verifySession } from "./session";
+import { isAdmin, isStaff, type StaffRole } from "./roles";
+
+export {
+  isAdmin, isStaff, STAFF_ROLES, type StaffRole,
+  canManageSchedule, canHandlePayment, canCheckIn, canViewFullOrders, canViewSettings,
+} from "./roles";
 
 export const getCurrentMember = cache(async (): Promise<Member | null> => {
   const jar = await cookies();
@@ -23,10 +29,14 @@ export async function requireMember(): Promise<Member> {
   return m;
 }
 
-export const isAdmin = (m: Member) => m.role === "admin";
-
 export async function requireAdmin(): Promise<Member> {
   const m = await requireMember();
   if (!isAdmin(m)) throw new Error("需要管理員權限");
+  return m;
+}
+
+export async function requireStaff(): Promise<Member & { role: StaffRole }> {
+  const m = await requireMember();
+  if (!isStaff(m)) throw new Error("需要員工權限");
   return m;
 }

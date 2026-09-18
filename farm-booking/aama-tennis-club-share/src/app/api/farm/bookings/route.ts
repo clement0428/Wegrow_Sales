@@ -13,6 +13,7 @@ const createSchema = z.object({
   infantCount: z.number().int().min(0).max(50),
   plantCount: z.number().int().min(0).max(50),
   mealCount: z.number().int().min(0).max(50),
+  vegetarianMealCount: z.number().int().min(0).max(50).default(0),
   contactName: z.string().trim().min(1).max(80),
   phone: z.string().regex(/^09\d{8}$/),
   groupName: z.string().trim().max(100).default(""),
@@ -42,6 +43,9 @@ export async function POST(request: Request) {
   // the DB check below.
   if (totalPeople > 30 || input.plantCount > totalPeople || input.mealCount > totalPeople) {
     return Response.json({ error: "人數或加購數量超出可接受範圍" }, { status: 400 });
+  }
+  if (input.vegetarianMealCount > input.mealCount) {
+    return Response.json({ error: "素食份數不可超過餐飲總份數" }, { status: 400 });
   }
 
   const db = await getDb();
@@ -77,6 +81,7 @@ export async function POST(request: Request) {
     people: totalPeople,
     plantCount: input.plantCount,
     mealCount: input.mealCount,
+    vegetarianMealCount: input.vegetarianMealCount,
     ...price,
   });
 
@@ -84,11 +89,11 @@ export async function POST(request: Request) {
   const result = await db.prepare(`
     INSERT INTO farm_bookings (
       id, booking_number, lookup_code, slot_id, customer_member_id, contact_name, contact_phone, group_name,
-      adult_count, child_count, infant_count, total_people, plant_count, meal_count,
+      adult_count, child_count, infant_count, total_people, plant_count, meal_count, vegetarian_meal_count,
       customer_note, amount_twd, booking_status, payment_status, hold_expires_at,
       ticket_snapshot_json, policy_snapshot_json, idempotency_key, created_at, updated_at
     )
-    SELECT ?, ?, ?, s.id, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+    SELECT ?, ?, ?, s.id, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
            'requested', 'not_open', NULL, ?,
            json_object(
              'capacityPolicyId', p.id,
@@ -130,7 +135,7 @@ export async function POST(request: Request) {
   `).bind(
     id, number, code, member?.id ?? null, input.contactName, input.phone, input.groupName,
     input.adultCount, input.childCount, input.infantCount, totalPeople,
-    input.plantCount, input.mealCount, input.note, price.totalTwd,
+    input.plantCount, input.mealCount, input.vegetarianMealCount, input.note, price.totalTwd,
     ticketSnapshot, input.idempotencyKey, now, now, input.slotId,
     now, now, now, now, totalPeople, now,
   ).run();

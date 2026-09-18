@@ -69,15 +69,16 @@ export async function listPublicSlots(people: number): Promise<PublicFarmSlot[]>
 export type FarmBookingRecord = {
   bookingNumber: string; lookupCode: string; contactName: string; contactPhone: string;
   groupName: string; adultCount: number; childCount: number; infantCount: number;
-  totalPeople: number; plantCount: number; mealCount: number; amountTwd: number;
-  bookingStatus: string; paymentStatus: string; startsAt: string; endsAt: string;
+  totalPeople: number; plantCount: number; mealCount: number; vegetarianMealCount: number | null;
+  amountTwd: number; bookingStatus: string; paymentStatus: string; startsAt: string; endsAt: string;
   experience: string; createdAt: string; statusBucket: StatusBucket;
 };
 
 type BookingRow = {
   booking_number: string; lookup_code: string; contact_name: string; contact_phone: string;
   group_name: string | null; adult_count: number; child_count: number; infant_count: number;
-  total_people: number; plant_count: number; meal_count: number; amount_twd: number;
+  total_people: number; plant_count: number; meal_count: number; vegetarian_meal_count: number | null;
+  amount_twd: number;
   booking_status: string; payment_status: string; hold_expires_at: string | null;
   cancelled_at: string | null; arrived_at: string | null; completed_at: string | null;
   starts_at: string; ends_at: string; experience: string; created_at: string;
@@ -90,6 +91,7 @@ function mapBooking(row: BookingRow, nowIso: string): FarmBookingRecord {
     groupName: row.group_name ?? "", adultCount: row.adult_count,
     childCount: row.child_count, infantCount: row.infant_count,
     totalPeople: row.total_people, plantCount: row.plant_count, mealCount: row.meal_count,
+    vegetarianMealCount: row.vegetarian_meal_count,
     amountTwd: row.amount_twd, bookingStatus: row.booking_status,
     paymentStatus: row.payment_status, startsAt: row.starts_at, endsAt: row.ends_at,
     experience: row.experience, createdAt: row.created_at,
@@ -100,7 +102,7 @@ function mapBooking(row: BookingRow, nowIso: string): FarmBookingRecord {
 const BOOKING_SELECT = `
   SELECT b.booking_number, b.lookup_code, b.contact_name, b.contact_phone, b.group_name,
          b.adult_count, b.child_count, b.infant_count, b.total_people,
-         b.plant_count, b.meal_count, b.amount_twd, b.booking_status,
+         b.plant_count, b.meal_count, b.vegetarian_meal_count, b.amount_twd, b.booking_status,
          b.payment_status, b.hold_expires_at, b.cancelled_at, b.arrived_at, b.completed_at,
          b.created_at, s.starts_at, s.ends_at, e.name AS experience
   FROM farm_bookings b

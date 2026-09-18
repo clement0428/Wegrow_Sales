@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { requireAdmin } from "@/lib/auth/current-member";
+import { canViewFullOrders, requireStaff } from "@/lib/auth/current-member";
 import { getDb } from "@/lib/db/client";
 
 const querySchema = z.object({
@@ -24,13 +24,10 @@ type SessionRow = {
 };
 
 export async function GET(request: Request) {
-  // Real admin-only endpoint — was entirely missing before, FarmAdmin.tsx
-  // rendered a hardcoded array. requireAdmin() throws if the caller isn't
-  // role='admin'; Next's error boundary turns that into a 500 for API
-  // routes, which is safe-by-default (fails closed) even though it isn't a
-  // clean 403 yet.
-  const member = await requireAdmin();
-  void member;
+  // Calendar/week-grid view is for admin + reception (排場次／接待總覽);
+  // kitchen never needs the session calendar, only /api/farm/admin/prep.
+  const member = await requireStaff();
+  if (!canViewFullOrders(member)) return Response.json({ error: "此角色無法檢視行事曆" }, { status: 403 });
 
   const url = new URL(request.url);
   const parsed = querySchema.safeParse({ from: url.searchParams.get("from"), to: url.searchParams.get("to") });

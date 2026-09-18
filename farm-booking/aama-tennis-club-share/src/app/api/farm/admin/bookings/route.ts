@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { requireAdmin } from "@/lib/auth/current-member";
+import { canViewFullOrders, requireStaff } from "@/lib/auth/current-member";
 import { getDb } from "@/lib/db/client";
 import { bucketOf, STATUS_BUCKETS, type StatusBucket } from "@/lib/farm/status";
 
@@ -28,10 +28,15 @@ type BookingRow = {
   starts_at: string;
   ends_at: string;
   experience: string;
+  amount_received: number;
+  amount_refunded: number;
 };
 
 export async function GET(request: Request) {
-  await requireAdmin();
+  // 訂單清單含聯絡電話與金額，屬於「所需資訊」中最敏感的部分 —
+  // 管理員與接待員可見，餐飲／備料角色不可見（只走 /api/farm/admin/prep）。
+  const member = await requireStaff();
+  if (!canViewFullOrders(member)) return Response.json({ error: "此角色無法檢視訂單清單" }, { status: 403 });
   const url = new URL(request.url);
   const parsed = querySchema.safeParse({
     from: url.searchParams.get("from") ?? undefined,
@@ -61,7 +66,9 @@ export async function GET(request: Request) {
     SELECT b.id, b.booking_number, b.lookup_code, b.contact_name, b.contact_phone, b.group_name,
            b.total_people, b.amount_twd, b.booking_status, b.payment_status, b.hold_expires_at,
            b.cancelled_at, b.arrived_at, b.completed_at, b.created_at,
-           s.starts_at, s.ends_at, e.name AS experience
+           s.starts_at, s.ends_at, e.name AS experience,
+           COALESCE((SELECT SUM(amount_twd) FROM farm_payment_records p WHERE p.booking_id = b.id AND p.record_type = 'payment'), 0) AS amount_received,
+           COALESCE((SELECT SUM(amount_twd) FROM farm_payment_records p WHERE p.booking_id = b.id AND p.record_type = 'refund'), 0) AS amount_refunded
     FROM farm_bookings b
     JOIN farm_slots s ON s.id = b.slot_id
     JOIN farm_experiences e ON e.id = s.experience_id
@@ -96,6 +103,8 @@ export async function GET(request: Request) {
       groupName: row.group_name ?? "",
       totalPeople: row.total_people,
       amountTwd: row.amount_twd,
+      amountReceived: row.amount_received,
+      amountOutstanding: row.amount_twd - row.amount_received + row.amount_refunded,
       bookingStatus: row.booking_status,
       paymentStatus: row.payment_status,
       statusBucket: bucket,

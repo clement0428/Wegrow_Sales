@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { requireAdmin } from "@/lib/auth/current-member";
+import { requireStaff } from "@/lib/auth/current-member";
 import { getDb } from "@/lib/db/client";
 
 const querySchema = z.object({
@@ -17,6 +17,7 @@ type PrepRow = {
   total_people: number;
   plant_count: number;
   meal_count: number;
+  vegetarian_meal_count: number | null;
   customer_note: string;
   booking_status: string;
 };
@@ -25,7 +26,10 @@ type PrepRow = {
 // requested/pending_payment（hold 期限內）也算進準備量，因為現場備料要抓
 // 上限而非只抓已確認數，同一份查詢邏輯依循 sessions route 的 active 定義。
 export async function GET(request: Request) {
-  await requireAdmin();
+  // 三種員工都能看準備工作，但餐飲／備料角色「只看時間、份數與飲食備註」
+  // （規格第4節＋Clement 2026-09-18 補充）：不含訂單編號、聯絡人、團名。
+  const member = await requireStaff();
+  const isKitchen = member.role === "kitchen";
 
   const url = new URL(request.url);
   const parsed = querySchema.safeParse({ date: url.searchParams.get("date") });
@@ -38,7 +42,7 @@ export async function GET(request: Request) {
       `
     SELECT s.id AS session_id, s.starts_at, s.ends_at, e.name AS experience,
            b.booking_number, b.contact_name, b.group_name, b.total_people,
-           b.plant_count, b.meal_count, b.customer_note, b.booking_status
+           b.plant_count, b.meal_count, b.vegetarian_meal_count, b.customer_note, b.booking_status
     FROM farm_slots s
     JOIN farm_experiences e ON e.id = s.experience_id
     JOIN farm_bookings b ON b.slot_id = s.id
@@ -68,26 +72,36 @@ export async function GET(request: Request) {
     startsAt: s.startsAt,
     endsAt: s.endsAt,
     experience: s.experience,
-    bookings: s.bookings.map((b) => ({
-      bookingNumber: b.booking_number,
-      contactName: b.contact_name,
-      groupName: b.group_name ?? "",
+    bookings: s.bookings.map((b, i) => ({
+      bookingNumber: isKitchen ? "" : b.booking_number,
+      contactName: isKitchen ? `第 ${i + 1} 團` : b.contact_name,
+      groupName: isKitchen ? "" : (b.group_name ?? ""),
       totalPeople: b.total_people,
       plantCount: b.plant_count,
       mealCount: b.meal_count,
+      vegetarianMealCount: b.vegetarian_meal_count,
+      nonVegetarianMealCount: b.vegetarian_meal_count === null ? null : b.meal_count - b.vegetarian_meal_count,
       note: b.customer_note,
       confirmed: b.booking_status === "confirmed",
     })),
   }));
 
+  // vegetarian is summed only from CONFIRMED-value rows (non-null); rows
+  // where vegetarian_meal_count IS NULL (pre-migration bookings, or a
+  // customer flow that never set it) are counted separately as
+  // "unconfirmed" and must never be silently folded into the 0 bucket —
+  // per Clement's explicit instruction this needs manual follow-up, not an
+  // assumed default.
   const totals = rows.reduce(
     (acc, r) => ({
       groups: acc.groups + 1,
       people: acc.people + r.total_people,
       plant: acc.plant + r.plant_count,
       meal: acc.meal + r.meal_count,
+      vegetarianMeal: acc.vegetarianMeal + (r.vegetarian_meal_count ?? 0),
+      vegetarianUnconfirmedMeals: acc.vegetarianUnconfirmedMeals + (r.vegetarian_meal_count === null ? r.meal_count : 0),
     }),
-    { groups: 0, people: 0, plant: 0, meal: 0 },
+    { groups: 0, people: 0, plant: 0, meal: 0, vegetarianMeal: 0, vegetarianUnconfirmedMeals: 0 },
   );
 
   return Response.json({ date, sessions, totals });
