@@ -2,6 +2,7 @@ import { z } from "zod";
 import { canHandlePayment, canViewFullOrders, requireStaff } from "@/lib/auth/current-member";
 import { getDb } from "@/lib/db/client";
 import { newId } from "@/lib/db/uuid";
+import { computePaymentSummary } from "@/lib/farm/payment-summary";
 
 const PAYMENT_METHODS = ["cash", "transfer", "other"] as const;
 const METHOD_LABELS: Record<(typeof PAYMENT_METHODS)[number], string> = { cash: "現金", transfer: "轉帳", other: "其他" };
@@ -12,6 +13,7 @@ const bodySchema = z.object({
   method: z.enum(PAYMENT_METHODS),
   referenceNote: z.string().trim().max(200).default(""),
   note: z.string().trim().max(500).default(""),
+  idempotencyKey: z.string().uuid(),
 });
 
 type RecordRow = {
@@ -19,22 +21,25 @@ type RecordRow = {
   reference_note: string; recorded_by_name: string; note: string; recorded_at: string;
 };
 
+// Field definitions (應收／累計收款／累計退款／淨收款／未收／超收) live as
+// comments in lib/farm/payment-summary.ts next to the pure function that
+// actually computes them.
 async function summarize(bookingId: string) {
   const db = await getDb();
-  const booking = await db.prepare("SELECT amount_twd FROM farm_bookings WHERE id = ?").bind(bookingId).first<{ amount_twd: number }>();
+  const booking = await db.prepare("SELECT amount_twd, cancelled_at FROM farm_bookings WHERE id = ?").bind(bookingId).first<{ amount_twd: number; cancelled_at: string | null }>();
   if (!booking) return null;
   const result = await db
     .prepare("SELECT id, record_type, amount_twd, method, reference_note, recorded_by_name, note, recorded_at FROM farm_payment_records WHERE booking_id = ? ORDER BY recorded_at")
     .bind(bookingId)
     .all<RecordRow>();
   const records = result.results ?? [];
-  const received = records.filter((r) => r.record_type === "payment").reduce((sum, r) => sum + r.amount_twd, 0);
-  const refunded = records.filter((r) => r.record_type === "refund").reduce((sum, r) => sum + r.amount_twd, 0);
+  const summary = computePaymentSummary(
+    booking.amount_twd,
+    !!booking.cancelled_at,
+    records.map((r) => ({ recordType: r.record_type as "payment" | "refund", amountTwd: r.amount_twd })),
+  );
   return {
-    amountDue: booking.amount_twd,
-    amountReceived: received,
-    amountRefunded: refunded,
-    amountOutstanding: booking.amount_twd - received + refunded,
+    ...summary,
     records: records.map((r) => ({
       id: r.id, type: r.record_type, amountTwd: r.amount_twd,
       method: r.method, methodLabel: METHOD_LABELS[r.method as (typeof PAYMENT_METHODS)[number]] ?? r.method,
@@ -60,19 +65,34 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
   const { id } = await params;
   const parsed = bodySchema.safeParse(await request.json().catch(() => null));
   if (!parsed.success) return Response.json({ error: "請求格式錯誤", issues: parsed.error.issues }, { status: 400 });
-  const { type, amountTwd, method, referenceNote, note } = parsed.data;
+  const { type, amountTwd, method, referenceNote, note, idempotencyKey } = parsed.data;
 
   const db = await getDb();
   const booking = await db.prepare("SELECT id FROM farm_bookings WHERE id = ?").bind(id).first<{ id: string }>();
   if (!booking) return Response.json({ error: "找不到這筆預約" }, { status: 404 });
 
+  // 防重複點擊：同一個 idempotency key 已經處理過就直接回現況，不再新增一筆。
+  const existing = await db.prepare("SELECT id FROM farm_payment_records WHERE idempotency_key = ?").bind(idempotencyKey).first<{ id: string }>();
+  if (existing) {
+    const summary = await summarize(id);
+    return Response.json({ ok: true, duplicate: true, ...summary });
+  }
+
+  if (type === "refund") {
+    // 退款不可超過可退金額（淨收款）——退款前重新從資料庫算一次，不信任前端顯示的數字。
+    const before = await summarize(id);
+    if (!before || amountTwd > before.refundableAmount) {
+      return Response.json({ error: `退款金額不可超過可退金額 NT$ ${before?.refundableAmount ?? 0}`, code: "refund_exceeds_refundable" }, { status: 400 });
+    }
+  }
+
   await db
     .prepare(
       `INSERT INTO farm_payment_records
-       (id, booking_id, record_type, amount_twd, method, reference_note, recorded_by_member_id, recorded_by_name, note, recorded_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+       (id, booking_id, record_type, amount_twd, method, reference_note, recorded_by_member_id, recorded_by_name, note, idempotency_key, recorded_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     )
-    .bind(newId(), id, type, amountTwd, method, referenceNote, member.id, member.display_name, note, new Date().toISOString())
+    .bind(newId(), id, type, amountTwd, method, referenceNote, member.id, member.display_name, note, idempotencyKey, new Date().toISOString())
     .run();
 
   await db

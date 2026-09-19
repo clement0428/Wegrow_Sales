@@ -2,7 +2,7 @@
 
 import Image from "next/image";
 import Link from "next/link";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   AlertTriangle, ArrowLeft, CalendarDays, CheckCircle2, CircleDollarSign,
   Clock3, Printer, RefreshCw, Settings2, Sprout, TicketCheck, UtensilsCrossed, Users, XCircle,
@@ -28,7 +28,8 @@ const STATUS_ORDER: StatusBucket[] = ["hold", "pending_payment", "confirmed", "a
 
 type AdminBooking = {
   id: string; bookingNumber: string; lookupCode: string; contactName: string; contactPhone: string;
-  groupName: string; totalPeople: number; amountTwd: number; amountReceived: number; amountOutstanding: number;
+  groupName: string; totalPeople: number; amountTwd: number; amountReceived: number; amountRefunded: number;
+  trueOutstanding: number; overpaidAmount: number;
   bookingStatus: string; paymentStatus: string;
   statusBucket: StatusBucket; startsAt: string; endsAt: string; experience: string; createdAt: string;
 };
@@ -290,6 +291,8 @@ function OrdersView({ role }: { role: StaffRole }) {
   const [payAmount, setPayAmount] = useState("");
   const [payMethod, setPayMethod] = useState<"cash" | "transfer" | "other">("cash");
   const [payReference, setPayReference] = useState("");
+  const [paySubmitting, setPaySubmitting] = useState(false);
+  const payIdempotencyKey = useRef("");
 
   function openPayment(bookingId: string) {
     setActionError(null);
@@ -298,23 +301,32 @@ function OrdersView({ role }: { role: StaffRole }) {
     setPayAmount("");
     setPayMethod("cash");
     setPayReference("");
+    setPaySubmitting(false);
+    // 同一次表單只用一把 key（雙擊「登記」不會產生兩筆）；每次重新打開表單才換新。
+    payIdempotencyKey.current = crypto.randomUUID();
   }
 
   async function runPayment(bookingId: string) {
+    if (paySubmitting) return;
     const amount = Number(payAmount);
     if (!Number.isInteger(amount) || amount <= 0) { setActionError("請輸入正確的金額"); return; }
     setActionError(null);
-    const res = await fetch(`/api/farm/admin/bookings/${bookingId}/payments`, {
-      method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ type: payType, amountTwd: amount, method: payMethod, referenceNote: payReference }),
-    });
-    if (!res.ok) {
-      const body = await res.json().catch(() => ({})) as { error?: string };
-      setActionError(body.error ?? `登記失敗（${res.status}）`);
-      return;
+    setPaySubmitting(true);
+    try {
+      const res = await fetch(`/api/farm/admin/bookings/${bookingId}/payments`, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ type: payType, amountTwd: amount, method: payMethod, referenceNote: payReference, idempotencyKey: payIdempotencyKey.current }),
+      });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({})) as { error?: string };
+        setActionError(body.error ?? `登記失敗（${res.status}）`);
+        return;
+      }
+      setPayingId(null);
+      retry();
+    } finally {
+      setPaySubmitting(false);
     }
-    setPayingId(null);
-    retry();
   }
 
   return <div className="admin-section">
@@ -342,8 +354,10 @@ function OrdersView({ role }: { role: StaffRole }) {
               <span>{dateFmt.format(new Date(b.startsAt))} {timeFmt.format(new Date(b.startsAt))}</span>
               <span>{b.totalPeople} 位</span>
               <span className="payment-cell">
-                <small>應收 NT$ {b.amountTwd.toLocaleString()}</small>
-                <strong className={b.amountOutstanding > 0 ? "outstanding" : "settled"}>{b.amountOutstanding > 0 ? `未收 NT$ ${b.amountOutstanding.toLocaleString()}` : "已收清"}</strong>
+                <small>應收 NT$ {b.amountTwd.toLocaleString()}{b.statusBucket === "cancelled" ? "（已取消）" : ""}</small>
+                {b.overpaidAmount > 0
+                  ? <strong className="overpaid">超收 NT$ {b.overpaidAmount.toLocaleString()}</strong>
+                  : <strong className={b.trueOutstanding > 0 ? "outstanding" : "settled"}>{b.trueOutstanding > 0 ? `未收 NT$ ${b.trueOutstanding.toLocaleString()}` : "已收清"}</strong>}
               </span>
               <span className={`status-pill status-b-${b.statusBucket}`}>{STATUS_LABELS[b.statusBucket]}</span>
               <span className="order-actions">
@@ -388,7 +402,7 @@ function OrdersView({ role }: { role: StaffRole }) {
                   <option value="other">其他</option>
                 </select>
                 <input type="text" placeholder="交易末碼／憑證（選填）" value={payReference} onChange={(e) => setPayReference(e.target.value)} />
-                <button className="secondary-button" onClick={() => runPayment(b.id)}>登記</button>
+                <button className="secondary-button" disabled={paySubmitting} onClick={() => runPayment(b.id)}>{paySubmitting ? "登記中…" : "登記"}</button>
                 <button className="secondary-button" onClick={() => setPayingId(null)}>取消</button>
               </div>
             )}

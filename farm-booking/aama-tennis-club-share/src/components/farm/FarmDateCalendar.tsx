@@ -110,17 +110,21 @@ export default function FarmDateCalendar({
         </div>
       </div>
       <div className={mode === "month" ? "calendar-grid month" : "calendar-grid week"}>
-        {WEEKDAY_HEADS.map((w) => <div key={w} className="calendar-head">{w}</div>)}
+        {WEEKDAY_HEADS.map((w, i) => <div key={w} className={i >= 4 ? "calendar-head weekend-head" : "calendar-head"}>{w}</div>)}
         {days.map((d) => {
           const key = dayKey(d);
           const status = statusOf(key);
           const inMonth = mode === "week" || d.getMonth() === cursor.getMonth();
           const isMine = mineDates.has(key);
           const selectable = status === "available" || status === "has_group";
+          // 週五六日特別配色（僅視覺）：鎖定狀態(額滿/未開放)優先，黃底只加在
+          // available／has_group，不會蓋掉灰色鎖定樣式，也不改變任何可訂邏輯。
+          const dow = d.getDay();
+          const isWeekend = dow === 0 || dow === 5 || dow === 6;
           return (
             <button
               key={key}
-              className={`calendar-cell status-${status}${key === activeDate ? " selected" : ""}${!inMonth ? " dim" : ""}${isMine ? " mine" : ""}`}
+              className={`calendar-cell status-${status}${key === activeDate ? " selected" : ""}${!inMonth ? " dim" : ""}${isMine ? " mine" : ""}${isWeekend ? " weekend" : ""}`}
               disabled={!selectable}
               onClick={() => selectable && onSelectDate(key)}
             >
