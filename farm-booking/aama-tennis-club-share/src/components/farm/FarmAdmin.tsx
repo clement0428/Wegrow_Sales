@@ -498,10 +498,108 @@ function PrepView({ role }: { role: StaffRole }) {
   );
 }
 
+type JobRun = {
+  id: string; triggerSource: string; startedAt: string; completedAt: string | null;
+  dueCount: number; sentCount: number; failedCount: number; blockedCount: number;
+  oldestPendingSeconds: number | null; errorSummary: string | null;
+};
+type JobStatus = {
+  jobName: string; lastRunAt: string | null; lastRunTriggerSource: string | null; lastRunCompletedAt: string | null;
+  oldestPendingSeconds: number | null; deadLetterCount: number; recentRuns: JobRun[];
+  alerts: { heartbeatMissed: boolean; backlogTooOld: boolean; hasCredentialErrors: boolean; hasDeadLetters: boolean; thresholds: { heartbeatMissedMinutes: number; backlogTooOldSeconds: number } };
+};
+
+const dateTimeFmt = new Intl.DateTimeFormat("zh-TW", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit", hour12: false, timeZone: "Asia/Taipei" });
+
+function JobStatusCard({ status, onRetried }: { status: JobStatus; onRetried: () => void }) {
+  const [retrying, setRetrying] = useState(false);
+  async function retryFailed() {
+    if (retrying) return;
+    setRetrying(true);
+    try {
+      await fetch("/api/farm/admin/job-status/retry", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ jobName: status.jobName }) });
+      onRetried();
+    } finally {
+      setRetrying(false);
+    }
+  }
+  const label = status.jobName === "reminders" ? "LINE 提醒" : "Sales 同步";
+  const anyAlert = status.alerts.heartbeatMissed || status.alerts.backlogTooOld || status.alerts.hasCredentialErrors || status.alerts.hasDeadLetters;
+  return (
+    <div className="job-status-card">
+      <div className="job-status-head">
+        <strong>{label}</strong>
+        {anyAlert ? <span className="job-alert-pill alert"><AlertTriangle size={12} /> 需注意</span> : <span className="job-alert-pill ok"><CheckCircle2 size={12} /> 正常</span>}
+      </div>
+      <div className="job-status-grid">
+        <span>最後啟動</span><span>{status.lastRunAt ? `${dateTimeFmt.format(new Date(status.lastRunAt))}（${status.lastRunTriggerSource === "cron" ? "排程" : "手動"}）` : "尚未啟動過"}</span>
+        <span>最舊積壓</span><span>{status.oldestPendingSeconds === null ? "無積壓" : `${Math.round(status.oldestPendingSeconds / 60)} 分鐘`}</span>
+        <span>需人工處理</span><span>{status.deadLetterCount} 筆{status.deadLetterCount > 0 && <button className="secondary-button" disabled={retrying} onClick={retryFailed}>{retrying ? "重試中…" : "全部重試"}</button>}</span>
+      </div>
+      {status.alerts.heartbeatMissed && <div className="job-alert-line">⚠ 超過 {status.alerts.thresholds.heartbeatMissedMinutes} 分鐘沒有任何一次啟動紀錄（排程可能沒有正確觸發）</div>}
+      {status.alerts.backlogTooOld && <div className="job-alert-line">⚠ 最舊待處理事件已等待超過 {Math.round(status.alerts.thresholds.backlogTooOldSeconds / 60)} 分鐘</div>}
+      {status.alerts.hasCredentialErrors && <div className="job-alert-line">⚠ 最近有憑證相關錯誤，需要人工確認</div>}
+      <table className="job-runs-table">
+        <thead><tr><th>時間</th><th>來源</th><th>應處理</th><th>成功</th><th>失敗</th><th>阻塞</th></tr></thead>
+        <tbody>
+          {status.recentRuns.length === 0 && <tr><td colSpan={6}>尚無執行紀錄</td></tr>}
+          {status.recentRuns.map((r) => (
+            <tr key={r.id}>
+              <td>{dateTimeFmt.format(new Date(r.startedAt))}</td>
+              <td>{r.triggerSource === "cron" ? "排程" : "手動"}</td>
+              <td>{r.dueCount}</td><td>{r.sentCount}</td><td>{r.failedCount}</td><td>{r.blockedCount}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+function JobStatusPanel() {
+  const [status, setStatus] = useState<{ reminders: JobStatus; salesSync: JobStatus } | null>(null);
+  const [state, setState] = useState<"loading" | "ready" | "error">("loading");
+  const [reloadTick, setReloadTick] = useState(0);
+  const retry = useCallback(() => { setState("loading"); setReloadTick((n) => n + 1); }, []);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    fetch("/api/farm/admin/job-status", { signal: controller.signal })
+      .then(async (res) => {
+        if (!res.ok) throw new Error(String(res.status));
+        const data = await res.json() as { reminders: JobStatus; salesSync: JobStatus };
+        setStatus(data);
+        setState("ready");
+      })
+      .catch((error: unknown) => {
+        if (error instanceof DOMException && error.name === "AbortError") return;
+        setState("error");
+      });
+    return () => controller.abort();
+  }, [reloadTick]);
+
+  return (
+    <div className="admin-section job-status-panel">
+      <div className="admin-section-title"><div><h2>排程與同步狀態</h2><p>LINE 提醒與 Sales 同步 job 的最近啟動、積壓與失敗紀錄——不是只在開發終端印 log。</p></div>
+        <button className="secondary-button" onClick={retry}><RefreshCw /> 重新整理</button>
+      </div>
+      {state === "loading" && <div className="empty-admin"><RefreshCw className="spin" /><strong>載入中…</strong></div>}
+      {state === "error" && <div className="empty-admin"><AlertTriangle /><strong>讀取失敗</strong></div>}
+      {state === "ready" && status && (
+        <div className="job-status-columns">
+          <JobStatusCard status={status.reminders} onRetried={retry} />
+          <JobStatusCard status={status.salesSync} onRetried={retry} />
+        </div>
+      )}
+    </div>
+  );
+}
+
 function SettingsView() {
   return <div className="settings-columns">
     <div className="admin-section"><h2>容量政策</h2><p>此規則已依使用者確認固定；變更時建立新版本，不回寫舊訂單。</p><div className="policy-list"><label>每時段總人數上限<input value="30" readOnly /></label><label>每時段最多團數<input value="2" readOnly /></label></div><div className="verified-line"><CheckCircle2 />規則版本 V2：每時段 30 人／最多 2 團，不分團數分級</div></div>
-    <div className="admin-section"><h2>待正式核定</h2><ul className="checklist"><li>成人、兒童與幼兒票價及年齡</li><li>付款保留時間（開發預設 10 分鐘）</li><li>前一天提醒時間（開發預設 18:00，提醒會排入佇列但 LINE Messaging API 憑證未設定，不會真的送出）</li><li>地址、導航、雨天、取消與退款政策</li><li>LINE／金流／Google Calendar 憑證</li><li>Sales 同步（outbox 表已建立，尚未接上真正的 Sales API）</li></ul></div>
+    <div className="admin-section"><h2>待正式核定</h2><ul className="checklist"><li>成人、兒童與幼兒票價及年齡</li><li>付款保留時間（開發預設 10 分鐘）</li><li>前一天提醒時間（開發預設 18:00，提醒會排入佇列但 LINE Messaging API 憑證未設定，不會真的送出）</li><li>地址、導航、雨天、取消與退款政策</li><li>LINE／金流／Google Calendar 憑證</li><li>Sales 同步（outbox＋job已完整實作，Sales端接收API未部署）</li></ul></div>
+    <JobStatusPanel />
   </div>;
 }
 

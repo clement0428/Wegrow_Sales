@@ -45,7 +45,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     .prepare(
       `
     UPDATE farm_bookings
-    SET slot_id = ?, visit_version = visit_version + 1, updated_at = ?
+    SET slot_id = ?, visit_version = visit_version + 1, version = version + 1, updated_at = ?
     WHERE id = ?
       AND cancelled_at IS NULL AND arrived_at IS NULL AND completed_at IS NULL
       AND slot_id != ?

@@ -15,27 +15,30 @@ const bodySchema = z.object({
 // actions on the same booking can't both apply — matches the same
 // atomic-conditional-update discipline already used for capacity checks in
 // /api/farm/bookings.
+// version increments on every transition — this is the "monotonic
+// booking_version" Sales' sync contract uses to reject out-of-order events
+// (a previously-unused column that's existed since migration 0006).
 const TRANSITIONS: Record<string, { set: string; where: string; from: string; to: string }> = {
   confirm: {
-    set: "booking_status = 'confirmed', updated_at = ?",
+    set: "booking_status = 'confirmed', version = version + 1, updated_at = ?",
     where: "booking_status = 'requested' AND cancelled_at IS NULL",
     from: "requested",
     to: "confirmed",
   },
   cancel: {
-    set: "cancelled_at = ?, updated_at = ?",
+    set: "cancelled_at = ?, version = version + 1, updated_at = ?",
     where: "cancelled_at IS NULL AND arrived_at IS NULL",
     from: "*",
     to: "cancelled",
   },
   check_in: {
-    set: "arrived_at = ?, updated_at = ?",
+    set: "arrived_at = ?, version = version + 1, updated_at = ?",
     where: "booking_status = 'confirmed' AND cancelled_at IS NULL AND arrived_at IS NULL",
     from: "confirmed",
     to: "arrived",
   },
   complete: {
-    set: "completed_at = ?, updated_at = ?",
+    set: "completed_at = ?, version = version + 1, updated_at = ?",
     where: "arrived_at IS NOT NULL AND completed_at IS NULL",
     from: "arrived",
     to: "completed",

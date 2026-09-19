@@ -398,6 +398,19 @@ button:disabled { cursor: not-allowed; opacity: .45; }
 .status-退款處理中 { background: #fff0ee; color: var(--red); }
 .admin-search { min-height: 42px; width: 240px; border: 1px solid var(--line); padding: 0 12px; }
 .settings-columns { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
+.job-status-panel { grid-column: 1 / -1; }
+.job-status-columns { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+.job-status-card { border: 1px solid var(--line); border-radius: 4px; padding: 16px; }
+.job-status-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
+.job-alert-pill { display: inline-flex; align-items: center; gap: 5px; padding: 4px 9px; border-radius: 999px; font-size: 12px; font-weight: 700; }
+.job-alert-pill.ok { background: #eef5f0; color: var(--green); }
+.job-alert-pill.alert { background: #fff0ee; color: var(--red); }
+.job-status-grid { display: grid; grid-template-columns: auto 1fr; gap: 8px 12px; font-size: 13px; margin-bottom: 10px; align-items: center; }
+.job-status-grid > span:nth-child(odd) { color: var(--muted); }
+.job-alert-line { font-size: 12px; color: #a15c00; margin-bottom: 6px; }
+.job-runs-table { width: 100%; border-collapse: collapse; font-size: 12px; margin-top: 10px; }
+.job-runs-table th, .job-runs-table td { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--line); }
+.job-runs-table th { background: #f5f6f1; color: var(--muted); font-weight: 700; }
 .policy-list { display: grid; gap: 12px; margin: 22px 0; }
 .policy-list label { display: flex; align-items: center; justify-content: space-between; font-weight: 700; }
 .policy-list input { width: 80px; padding: 10px; border: 1px solid var(--line); text-align: center; }

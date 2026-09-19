@@ -4,11 +4,13 @@ import { composeDayBeforeReminderText } from "@/lib/line/reminder-text";
 import { buildSyncRequest } from "@/lib/sales/sync-client";
 
 describe("buildPushRequest", () => {
-  it("targets the real LINE push endpoint with a bearer token and the right body shape", () => {
-    const { url, init } = buildPushRequest("tok_123", "U_abc", [{ type: "text", text: "hi" }]);
+  it("targets the real LINE push endpoint with a bearer token, retry key, and the right body shape", () => {
+    const { url, init } = buildPushRequest("tok_123", "U_abc", [{ type: "text", text: "hi" }], "retry-key-1");
     expect(url).toBe("https://api.line.me/v2/bot/message/push");
     expect(init.method).toBe("POST");
-    expect((init.headers as Record<string, string>).Authorization).toBe("Bearer tok_123");
+    const headers = init.headers as Record<string, string>;
+    expect(headers.Authorization).toBe("Bearer tok_123");
+    expect(headers["X-Line-Retry-Key"]).toBe("retry-key-1");
     expect(JSON.parse(init.body as string)).toEqual({ to: "U_abc", messages: [{ type: "text", text: "hi" }] });
   });
 });
@@ -34,12 +36,19 @@ describe("nextAttemptDelayMinutes", () => {
 describe("buildSyncRequest", () => {
   it("targets the configured URL with the sync key header and full event payload", () => {
     const { url, init } = buildSyncRequest("https://sales.example/api/farm-visitors/sync", "key_abc", {
-      eventType: "booking_created", bookingId: "b1", bookingNumber: "WG-1", contactName: "測試",
+      eventId: "evt-1", schemaVersion: 1, eventType: "booking_created", occurredAt: "2026-09-19T00:00:00.000Z",
+      bookingId: "b1", bookingVersion: 1, bookingNumber: "WG-1", contactName: "測試",
       contactPhone: "0912345678", groupName: "", totalPeople: 3, startsAt: "2026-10-01T14:00:00+08:00", experience: "科技溫室農場參訪",
     });
     expect(url).toBe("https://sales.example/api/farm-visitors/sync");
     expect((init.headers as Record<string, string>)["X-Sales-Sync-Key"]).toBe("key_abc");
-    expect(JSON.parse(init.body as string).bookingNumber).toBe("WG-1");
+    const body = JSON.parse(init.body as string);
+    expect(body.bookingNumber).toBe("WG-1");
+    expect(body.eventId).toBe("evt-1");
+    expect(body.bookingVersion).toBe(1);
+    // PII policy: must never include a LINE user id, session token, or payment amount.
+    expect(body).not.toHaveProperty("lineUserId");
+    expect(body).not.toHaveProperty("amountTwd");
   });
 });
 
