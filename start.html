@@ -1,0 +1,608 @@
+﻿<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>WeGrow Sales Start</title>
+  <style>
+    :root {
+      --yellow: #E2CF35;
+      --gray: #808080;
+      --ink: #17211c;
+      --muted: #5f665f;
+      --line: #dfe5dd;
+      --paper: #fbfaf6;
+      --green: #1f6b4b;
+      --red: #b73546;
+      --blue: #245b8f;
+      --white: #ffffff;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: "Microsoft JhengHei", "Noto Sans TC", Arial, sans-serif;
+      color: var(--ink);
+      background: linear-gradient(180deg, #f8fbf5 0%, var(--paper) 42%, #fff 100%);
+      letter-spacing: 0;
+    }
+    a { color: inherit; text-decoration: none; }
+    button, input, textarea, select { font: inherit; }
+    .shell { width: min(1180px, calc(100% - 28px)); margin: 0 auto; }
+    .topbar {
+      border-bottom: 1px solid var(--line);
+      background: rgba(251, 250, 246, .94);
+      position: sticky;
+      top: 0;
+      z-index: 10;
+      backdrop-filter: blur(14px);
+    }
+    .nav { min-height: 64px; display: flex; align-items: center; justify-content: space-between; gap: 14px; }
+    .brand { display: flex; align-items: center; gap: 10px; font-weight: 900; }
+    .mark { width: 34px; height: 34px; border-radius: 8px; background: var(--yellow); color: #2b2b2b; display: grid; place-items: center; }
+    .nav-links { display: flex; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
+    .nav-links a { padding: 8px 10px; color: var(--muted); border-radius: 8px; font-size: 14px; }
+    .nav-links a:hover { background: #eef4ed; color: var(--green); }
+    .hero { padding: 38px 0 20px; display: grid; grid-template-columns: 1.06fr .94fr; gap: 18px; align-items: stretch; }
+    .panel, .card {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: rgba(255,255,255,.94);
+      box-shadow: 0 14px 34px rgba(23,33,28,.07);
+    }
+    .panel { padding: clamp(20px, 4vw, 34px); }
+    .hero-main {
+      color: white;
+      background:
+        linear-gradient(105deg, rgba(23,33,28,.92), rgba(31,107,75,.78), rgba(183,53,70,.34)),
+        url("assets/greenhouse-room.jpg");
+      background-size: cover;
+      background-position: center;
+      min-height: 390px;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+    }
+    .eyebrow { display: inline-flex; width: fit-content; padding: 7px 10px; border: 1px solid rgba(255,255,255,.32); border-radius: 8px; color: rgba(255,255,255,.9); font-size: 13px; }
+    h1 { margin: 18px 0 14px; font-size: clamp(38px, 6vw, 70px); line-height: 1.05; letter-spacing: 0; }
+    h2 { margin: 0 0 12px; font-size: 24px; }
+    h3 { margin: 0 0 8px; font-size: 18px; }
+    p { line-height: 1.7; }
+    .hero-main p { max-width: 760px; color: rgba(255,255,255,.9); font-size: clamp(16px, 2vw, 20px); margin: 0; }
+    .pill-row { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 26px; }
+    .pill { border-radius: 8px; border: 1px solid rgba(255,255,255,.3); background: rgba(255,255,255,.12); padding: 9px 11px; font-size: 14px; color: rgba(255,255,255,.92); }
+    .status { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin: 18px 0; }
+    .status div { border: 1px solid var(--line); border-radius: 8px; background: #f6f8f2; padding: 12px; }
+    .status strong { display: block; color: var(--green); font-size: 20px; }
+    .status span { color: var(--muted); font-size: 13px; }
+    .access-grid { display: grid; grid-template-columns: 1.1fr .95fr .95fr; gap: 14px; margin-top: 18px; }
+    .access-card { border: 1px solid rgba(255,255,255,.28); border-radius: 8px; background: rgba(255,255,255,.12); padding: 14px; }
+    .access-card strong { display: block; color: #fff; font-size: 17px; margin-bottom: 6px; }
+    .access-card span { color: rgba(255,255,255,.84); display: block; font-size: 13px; line-height: 1.55; min-height: 42px; }
+    .access-card .actions { margin-top: 12px; }
+    .actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 18px; }
+    .btn { display: inline-flex; align-items: center; justify-content: center; min-height: 42px; padding: 11px 14px; border-radius: 8px; border: 0; background: var(--green); color: white; font-weight: 800; cursor: pointer; }
+    .btn.secondary { background: #f4f6ef; color: var(--green); border: 1px solid var(--line); }
+    .btn.warn { background: var(--red); }
+    .btn.blue { background: var(--blue); }
+    .btn:disabled { opacity: .55; cursor: not-allowed; }
+    .section { padding: 22px 0; }
+    .section-head { display: flex; align-items: end; justify-content: space-between; gap: 18px; margin-bottom: 14px; }
+    .section-head p { max-width: 820px; color: var(--muted); margin: 6px 0 0; }
+    .grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; }
+    .grid.two { grid-template-columns: repeat(2, 1fr); }
+    .card { padding: 18px; min-height: 140px; }
+    .card p { color: var(--muted); margin: 0; }
+    .card small { color: var(--red); font-weight: 800; margin-top: 14px; display: block; }
+    .channel-card { display: grid; gap: 12px; }
+    .channel-top { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+    .badge { padding: 5px 8px; border-radius: 8px; background: #f4f6ef; color: var(--muted); font-size: 12px; font-weight: 800; }
+    .badge.ready { background: #e8f6ec; color: var(--green); }
+    .badge.blocked { background: #fff1f1; color: var(--red); }
+    .checklist { display: grid; gap: 8px; margin-top: 8px; }
+    .check { display: grid; grid-template-columns: 20px 1fr; gap: 8px; align-items: start; color: var(--muted); font-size: 14px; line-height: 1.5; }
+    input[type="checkbox"] { width: 17px; height: 17px; accent-color: var(--green); margin-top: 2px; }
+    .field { display: grid; gap: 7px; margin-bottom: 12px; }
+    .field label { font-weight: 800; font-size: 14px; }
+    input, textarea, select {
+      width: 100%;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 10px 11px;
+      background: white;
+      color: var(--ink);
+    }
+    textarea { min-height: 120px; resize: vertical; line-height: 1.6; }
+    .prompt-box { border: 1px solid var(--line); border-radius: 8px; background: #f7f8f3; padding: 16px; line-height: 1.8; white-space: pre-wrap; overflow-x: auto; }
+    .warning { border-left: 5px solid var(--yellow); background: #fffdf0; padding: 12px 14px; border-radius: 8px; color: #413b16; line-height: 1.7; }
+    .table { width: 100%; border-collapse: collapse; background: white; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
+    .table th, .table td { border-bottom: 1px solid var(--line); padding: 11px; text-align: left; vertical-align: top; }
+    .table th { background: #f4f6ef; font-size: 13px; }
+    .table td { color: var(--muted); line-height: 1.55; }
+    footer { color: var(--muted); padding: 26px 0 40px; border-top: 1px solid var(--line); margin-top: 24px; line-height: 1.7; }
+    @media (max-width: 920px) {
+      .hero, .grid, .grid.two { grid-template-columns: 1fr; }
+      .access-grid { grid-template-columns: 1fr; }
+      .status { grid-template-columns: 1fr; }
+      .section-head { align-items: flex-start; flex-direction: column; }
+      .nav { align-items: flex-start; flex-direction: column; padding: 12px 0; }
+      .nav-links { justify-content: flex-start; }
+    }
+  </style>
+</head>
+<body>
+  <header class="topbar">
+    <nav class="shell nav">
+      <a class="brand" href="#top"><span class="mark">W</span><span>WeGrow Sales Start</span></a>
+      <div class="nav-links">
+        <a href="#publish">發布作戰台</a>
+        <a href="#channels">通路建置</a>
+        <a href="#social-sync">社群代管</a>
+        <a href="#queue">發布佇列</a>
+        <a href="#connectors">API 串接</a>
+        <a href="#video">EP1 素材</a>
+        <a href="#strategy">未來策略</a>
+        <a href="social-account-vault.html">帳密管理</a>
+      </div>
+    </nav>
+  </header>
+
+  <main id="top">
+    <section class="shell hero">
+      <div class="panel hero-main">
+        <div>
+          <span class="eyebrow">WeGrow Sales Command Center</span>
+          <h1>先分入口，再推進銷售。</h1>
+          <p>`start.html` 是總入口；`http://127.0.0.1:8787/` 是 Sales V0 每日銷售作戰桌。V0 先做操作分權與分流，不做登入權限。</p>
+        </div>
+        <div>
+          <div class="pill-row">
+            <span class="pill">Clement：每日 3 件事</span>
+            <span class="pill">行銷：素材與發布佇列</span>
+            <span class="pill">Agent：交接文件與開發規則</span>
+          </div>
+          <div class="access-grid">
+            <div class="access-card">
+              <strong>Clement / 老闆入口</strong>
+              <span>每天只看 Sales V0：今日 3 件事、待回留言、B2B Gate、缺證據、商譯追問。</span>
+              <div class="actions">
+                <a class="btn" href="http://127.0.0.1:8787/">開啟 Sales V0</a>
+              </div>
+            </div>
+            <div class="access-card">
+              <strong>行銷 / 發布入口</strong>
+              <span>處理 EP1 素材、平台帳號、發布佇列與 manifest。這裡不是每日銷售主畫面。</span>
+              <div class="actions">
+                <a class="btn secondary" href="#publish">發布作戰台</a>
+              </div>
+            </div>
+            <div class="access-card">
+              <strong>Agent / 開發入口</strong>
+              <span>給 Codex / Claude 讀交接文件、V0 限制、部署判斷與商譯規則。不要從零重做。</span>
+              <div class="actions">
+                <a class="btn secondary" href="outputs/wegrow_sales_v0/WEGROW_SALES_V0_WEBSITE_DEV_HANDOFF.md">開發交接 MD</a>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <aside class="panel">
+        <h2>今天只做三件事</h2>
+        <div class="status">
+          <div><strong id="channelScore">0/10</strong><span>平台建置完成</span></div>
+          <div><strong id="assetScore">0/4</strong><span>發布素材完成</span></div>
+          <div><strong>V2.0</strong><span>EP1 Kling Prompt</span></div>
+        </div>
+        <ol>
+          <li>先在「通路建置」把已有帳號勾起來。</li>
+          <li>在「發布佇列」填 EP1 影片檔、標題、描述、CTA。</li>
+          <li>按「產生發布 Manifest」，之後 API connector 就吃這份檔案自動上傳。</li>
+        </ol>
+        <div class="actions">
+          <a class="btn" href="http://127.0.0.1:8787/">開啟 Sales V0</a>
+          <a class="btn secondary" href="#publish">開始發布作戰台</a>
+          <a class="btn secondary" href="social-account-vault.html">帳密管理工具</a>
+          <a class="btn secondary" href="outputs/video_content_engine/episodes/EP1_Kling_one_table_v2_0.xlsx">EP1 V2.0 Excel</a>
+          <a class="btn secondary" href="outputs/video_content_engine/episodes/EP1_remaining_Kling_director_prompts_v2_0.md">Kling 後段 Prompt</a>
+        </div>
+      </aside>
+    </section>
+
+    <section class="shell section" id="publish">
+      <div class="section-head">
+        <div>
+          <h2>發布作戰台</h2>
+          <p>這裡不是假裝所有平台都能 API 上傳，而是把「API 自動」、「工具代管」、「手動/半自動」都納入同一個發射流程。</p>
+        </div>
+        <button class="btn blue" id="copyManifestButton" type="button">產生發布 Manifest</button>
+      </div>
+      <div class="grid two">
+        <section class="panel">
+          <h3>EP1 發布素材</h3>
+          <div class="field">
+            <label for="videoPath">影片檔路徑</label>
+            <input id="videoPath" value="C:\Users\cowle\Downloads\EP1_final_vertical.mp4">
+          </div>
+          <div class="field">
+            <label for="postTitle">主標題</label>
+            <input id="postTitle" value="用一顆麻豆的草莓，為您解密 AI 農業">
+          </div>
+          <div class="field">
+            <label for="postCaption">描述 / Caption</label>
+            <textarea id="postCaption">草莓突然種不好，不是玄學，是機率。從種苗、土壤、水肥，到陽光、溫度、濕度，AI 農業做的是每天幫我們看哪一站風險正在變高。</textarea>
+          </div>
+          <div class="field">
+            <label for="postCta">CTA</label>
+            <input id="postCta" value="想體驗南台灣 AI 草莓農場，請加入 WeGrow 等候名單。">
+          </div>
+          <div class="field">
+            <label for="hashtags">Hashtags</label>
+            <input id="hashtags" value="#AI農業 #智慧農業 #草莓 #親子教育 #麻豆 #WeGrow #Shorts">
+          </div>
+        </section>
+        <section class="panel">
+          <h3>發布前檢查</h3>
+          <div class="checklist">
+            <label class="check"><input type="checkbox" data-asset-check="video">影片已輸出 9:16、60 秒內、無浮水印</label>
+            <label class="check"><input type="checkbox" data-asset-check="cover">封面圖已做好，第一眼看得到草莓和 AI 農業</label>
+            <label class="check"><input type="checkbox" data-asset-check="caption">標題、描述、CTA、Hashtags 已確認</label>
+            <label class="check"><input type="checkbox" data-asset-check="approval">Clement 已看過成片，允許發布</label>
+          </div>
+          <div class="warning" style="margin-top:16px">
+            真正一鍵上傳前，API 必須先完成 OAuth。這頁會先產生同一份發布 Manifest，後端 connector 依照 Manifest 分別送 YouTube、Instagram、TikTok。
+          </div>
+          <div class="actions">
+            <button class="btn" id="savePublishPackButton" type="button">儲存本次發布資料</button>
+            <button class="btn secondary" id="resetPublishButton" type="button">重置勾選</button>
+          </div>
+        </section>
+      </div>
+      <div class="prompt-box" id="manifestBox" style="margin-top:14px">按「產生發布 Manifest」後，這裡會出現給自動上傳程式吃的 JSON。</div>
+    </section>
+
+    <section class="shell section" id="social-sync">
+      <div class="section-head">
+        <div>
+          <h2>14 家客戶社群代管同步</h2>
+          <p>2026-09-30 已同步 Google Sheet「先做這14家」：LINE 官方帳號加入/可聊 11/14，Facebook 由 WeGrow 威果農業粉專追蹤 11/14。這次只做加入與追蹤，未送出私訊、留言或按讚。</p>
+        </div>
+        <a class="btn secondary" href="outputs/wegrow_sales_v0/index.html">開啟 Sales V0 明細</a>
+      </div>
+      <div class="status">
+        <div><strong>11/14</strong><span>LINE 已加入或可聊天</span></div>
+        <div><strong>11/14</strong><span>Facebook 已追蹤中</span></div>
+        <div><strong>3+3</strong><span>待核實官方 LINE / FB</span></div>
+      </div>
+      <table class="table">
+        <thead>
+          <tr><th>客戶</th><th>LINE 狀態</th><th>Facebook 狀態</th><th>下一步</th></tr>
+        </thead>
+        <tbody>
+          <tr><td>千森製菓</td><td>已加/已是好友：chenpinyin</td><td>已追蹤中：ChimoriSeika</td><td>保留暖客狀態，等回覆或內容訊號。</td></tr>
+          <tr><td>蘿芙甜點</td><td>已加入：@tvg7070u</td><td>已追蹤中：loftpatisserie</td><td>可用草莓甜點合作角度跟進。</td></tr>
+          <tr><td>于生繁花</td><td>已可聊天：@yueverblossom</td><td>未找到可核實粉專</td><td>先走 LINE 官方帳號。</td></tr>
+          <tr><td>花草遊戲花藝學苑</td><td>已可聊天：@flora.fun</td><td>已追蹤中：florawithfun</td><td>觀察花藝/禮盒/體驗課程合作訊號。</td></tr>
+          <tr><td>承億酒店</td><td>已加入/已開聊天室：@244imrjl</td><td>已追蹤中：TAIUrbanResort.kaohsiung</td><td>等餐飲、禮盒或活動檔期訊號。</td></tr>
+          <tr><td>和逸飯店台南西門館</td><td>已加入：@966pkxfw</td><td>已追蹤中：hotelcozzixm</td><td>飯店合作先補窗口與檔期。</td></tr>
+          <tr><td>奧瑪烘焙</td><td>已加入：@vnv9975s</td><td>已追蹤中：auma168</td><td>烘焙草莓原料與聯名甜點角度保留。</td></tr>
+          <tr><td>Mia C'bon</td><td>已加入：@844smqcw</td><td>已追蹤中：miacbon</td><td>通路合作仍需 G2 具名窗口與 G3 證據包。</td></tr>
+          <tr><td>AAMA／創業者共創平台</td><td>未找到已核實官方 LINE</td><td>未找到可核實粉專</td><td>暫停追蹤，改由官網/Email/人脈查核。</td></tr>
+          <tr><td>四葉國際餐旅／SOL</td><td>已加入：@sol.tainan</td><td>未找到可核實粉專</td><td>先走 LINE，等官方來源再補 FB。</td></tr>
+          <tr><td>主婦聯盟</td><td>已加入可聊天：@efp3888k</td><td>已追蹤中：hucccoop</td><td>需規格、檢驗、合作邏輯清楚後再推進。</td></tr>
+          <tr><td>台灣好農</td><td>已加入可聊天：@fgw9516d</td><td>已追蹤中：wonderfulfoodclub</td><td>觀察選品/產地故事語感。</td></tr>
+          <tr><td>聖德科斯</td><td>未找到已核實官方 LINE</td><td>已追蹤中：SANTACRUZ.ORG</td><td>FB 先低頻觀察通路採購語境。</td></tr>
+          <tr><td>饗賓餐旅</td><td>未找到已核實官方 LINE</td><td>已追蹤中：eatogether</td><td>需具名窗口，未補前不寄正式銷售信。</td></tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section class="shell section" id="channels">
+      <div class="section-head">
+        <div>
+          <h2>通路建置</h2>
+          <p>每個平台先完成帳號與權限。勾選狀態會存在瀏覽器本機，讓你每天打開 start 就知道缺哪一關。</p>
+        </div>
+      </div>
+      <div class="grid">
+        <article class="card channel-card" data-channel-card="youtube">
+          <div class="channel-top"><h3>YouTube Shorts</h3><span class="badge" data-channel-badge="youtube">未完成</span></div>
+          <p>最優先。可用 YouTube Data API `videos.insert` 上傳。</p>
+          <div class="checklist">
+            <label class="check"><input type="checkbox" data-channel="youtube" data-step="account">已確認 YouTube 頻道</label>
+            <label class="check"><input type="checkbox" data-channel="youtube" data-step="project">Google Cloud 專案已建立</label>
+            <label class="check"><input type="checkbox" data-channel="youtube" data-step="oauth">OAuth client 已建立</label>
+            <label class="check"><input type="checkbox" data-channel="youtube" data-step="scope">已授權 `youtube.upload`</label>
+          </div>
+        </article>
+        <article class="card channel-card" data-channel-card="instagram">
+          <div class="channel-top"><h3>Instagram Reels</h3><span class="badge" data-channel-badge="instagram">未完成</span></div>
+          <p>需要 Meta App、IG 專業帳號、Facebook Page 綁定，走 Instagram Graph API 發布流程。</p>
+          <div class="checklist">
+            <label class="check"><input type="checkbox" data-channel="instagram" data-step="professional">IG 已切專業帳號</label>
+            <label class="check"><input type="checkbox" data-channel="instagram" data-step="page">已綁定 Facebook Page</label>
+            <label class="check"><input type="checkbox" data-channel="instagram" data-step="app">Meta App 已建立</label>
+            <label class="check"><input type="checkbox" data-channel="instagram" data-step="permissions">發布權限已申請</label>
+          </div>
+        </article>
+        <article class="card channel-card" data-channel-card="tiktok">
+          <div class="channel-top"><h3>TikTok</h3><span class="badge" data-channel-badge="tiktok">未完成</span></div>
+          <p>需要 TikTok Developer App。Direct Post 通常需要審核；未通過時先走草稿或私密測試。</p>
+          <div class="checklist">
+            <label class="check"><input type="checkbox" data-channel="tiktok" data-step="account">TikTok 帳號已確認</label>
+            <label class="check"><input type="checkbox" data-channel="tiktok" data-step="app">Developer App 已建立</label>
+            <label class="check"><input type="checkbox" data-channel="tiktok" data-step="domain">影片 URL domain 已驗證</label>
+            <label class="check"><input type="checkbox" data-channel="tiktok" data-step="audit">Direct Post 審核狀態已確認</label>
+          </div>
+        </article>
+        <article class="card channel-card" data-channel-card="facebook">
+          <div class="channel-top"><h3>Facebook Reels</h3><span class="badge" data-channel-badge="facebook">未完成</span></div>
+          <p>與 Meta App 一起處理，優先用 Page 發布，和 IG 共用部分素材與權限準備。</p>
+          <div class="checklist">
+            <label class="check"><input type="checkbox" data-channel="facebook" data-step="page">Facebook Page 已確認</label>
+            <label class="check"><input type="checkbox" data-channel="facebook" data-step="admin">管理員權限已確認</label>
+            <label class="check"><input type="checkbox" data-channel="facebook" data-step="app">Meta App 已連接</label>
+            <label class="check"><input type="checkbox" data-channel="facebook" data-step="publish">發布權限已確認</label>
+          </div>
+        </article>
+        <article class="card channel-card" data-channel-card="linkedin">
+          <div class="channel-top"><h3>LinkedIn</h3><span class="badge" data-channel-badge="linkedin">未完成</span></div>
+          <p>用於 B2B：ESG、智慧農業、加盟、企業合作。先做手動發布，之後再接 API。</p>
+          <div class="checklist">
+            <label class="check"><input type="checkbox" data-channel="linkedin" data-step="profile">個人帳號已整理</label>
+            <label class="check"><input type="checkbox" data-channel="linkedin" data-step="company">公司頁已確認</label>
+            <label class="check"><input type="checkbox" data-channel="linkedin" data-step="copy">B2B 文案模板已確認</label>
+            <label class="check"><input type="checkbox" data-channel="linkedin" data-step="api">API 可行性待確認</label>
+          </div>
+        </article>
+        <article class="card channel-card" data-channel-card="threads">
+          <div class="channel-top"><h3>Threads</h3><span class="badge" data-channel-badge="threads">未完成</span></div>
+          <p>Meta 官方 Threads API 可發布文字、圖片、影片；可和 IG/Meta App 一起規劃。</p>
+          <div class="checklist">
+            <label class="check"><input type="checkbox" data-channel="threads" data-step="profile">Threads 帳號已確認</label>
+            <label class="check"><input type="checkbox" data-channel="threads" data-step="meta">Meta App 已連接</label>
+            <label class="check"><input type="checkbox" data-channel="threads" data-step="oauth">Threads OAuth 權限已確認</label>
+            <label class="check"><input type="checkbox" data-channel="threads" data-step="template">短文模板已確認</label>
+          </div>
+        </article>
+        <article class="card channel-card" data-channel-card="xiaohongshu">
+          <div class="channel-top"><h3>小紅書</h3><span class="badge" data-channel-badge="xiaohongshu">未完成</span></div>
+          <p>最穩先用 KAWO 或官方 App 排程。不要一開始用不明爬蟲/非官方 API 發布。</p>
+          <div class="checklist">
+            <label class="check"><input type="checkbox" data-channel="xiaohongshu" data-step="account">小紅書帳號已建立</label>
+            <label class="check"><input type="checkbox" data-channel="xiaohongshu" data-step="profile">品牌簡介與頭像已整理</label>
+            <label class="check"><input type="checkbox" data-channel="xiaohongshu" data-step="kawo">KAWO 或手機排程流程已確認</label>
+            <label class="check"><input type="checkbox" data-channel="xiaohongshu" data-step="template">小紅書圖文/短影音模板已確認</label>
+          </div>
+        </article>
+        <article class="card channel-card" data-channel-card="x">
+          <div class="channel-top"><h3>X / Twitter</h3><span class="badge" data-channel-badge="x">未完成</span></div>
+          <p>適合做 AlphaGo 類比、AI 農業觀點、影片連結導流。</p>
+          <div class="checklist">
+            <label class="check"><input type="checkbox" data-channel="x" data-step="account">X 帳號已建立</label>
+            <label class="check"><input type="checkbox" data-channel="x" data-step="profile">品牌資料已整理</label>
+            <label class="check"><input type="checkbox" data-channel="x" data-step="scheduler">排程工具已連接</label>
+            <label class="check"><input type="checkbox" data-channel="x" data-step="template">短文模板已確認</label>
+          </div>
+        </article>
+        <article class="card channel-card" data-channel-card="medium">
+          <div class="channel-top"><h3>Medium</h3><span class="badge" data-channel-badge="medium">未完成</span></div>
+          <p>把短影音旁白擴寫成長文，建立 AI 農業與 ESG 權威感。</p>
+          <div class="checklist">
+            <label class="check"><input type="checkbox" data-channel="medium" data-step="account">Medium 帳號已建立</label>
+            <label class="check"><input type="checkbox" data-channel="medium" data-step="bio">作者簡介已整理</label>
+            <label class="check"><input type="checkbox" data-channel="medium" data-step="article">EP1 長文模板已確認</label>
+            <label class="check"><input type="checkbox" data-channel="medium" data-step="canonical">官網 canonical / 導流策略已確認</label>
+          </div>
+        </article>
+        <article class="card channel-card" data-channel-card="website">
+          <div class="channel-top"><h3>官網 / SEO</h3><span class="badge" data-channel-badge="website">未完成</span></div>
+          <p>所有平台最後都要導回 WeGrow 自有名單與草莓銷售頁。</p>
+          <div class="checklist">
+            <label class="check"><input type="checkbox" data-channel="website" data-step="landing">名單頁 / 等候名單已確認</label>
+            <label class="check"><input type="checkbox" data-channel="website" data-step="article">EP1 SEO 文章已建立</label>
+            <label class="check"><input type="checkbox" data-channel="website" data-step="utm">UTM 追蹤規則已確認</label>
+            <label class="check"><input type="checkbox" data-channel="website" data-step="analytics">GA / Search Console 已確認</label>
+          </div>
+        </article>
+        <article class="card channel-card">
+          <div class="channel-top"><h3>下一批平台</h3><span class="badge blocked">第二階段</span></div>
+          <p>LINE VOOM、Pinterest、Bluesky、Podcast short clips。先把主平台跑穩，再擴張。</p>
+          <small>全頻道可以列入，但不要全部同時接 API。</small>
+        </article>
+      </div>
+    </section>
+
+    <section class="shell section" id="queue">
+      <div class="section-head">
+        <div>
+          <h2>發布佇列</h2>
+          <p>這是每天要推進的內容管線。狀態先用本機 Dashboard 管，接 API 後會改由後端更新。</p>
+        </div>
+      </div>
+      <table class="table">
+        <thead>
+          <tr><th>內容</th><th>平台</th><th>狀態</th><th>下一步</th></tr>
+        </thead>
+        <tbody>
+          <tr><td>EP1 草莓為什麼突然死</td><td>YouTube / IG / TikTok / Facebook / 小紅書</td><td>製作中</td><td>完成 Kling Shot 04-08，CapCut 合成</td></tr>
+          <tr><td>EP1 觀點短文版</td><td>Threads / X / LinkedIn</td><td>待改寫</td><td>把影片內容改成 AlphaGo 勝率與 AI 農業觀點</td></tr>
+          <tr><td>EP1 長文 SEO 版</td><td>官網 / Medium</td><td>待生成</td><td>由影片旁白擴寫 900-1200 字</td></tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section class="shell section" id="connectors">
+      <div class="section-head">
+        <div>
+          <h2>API 串接路線</h2>
+          <p>一鍵多平台自動上傳不是前端按鈕而已，必須有 OAuth、token 儲存、上傳狀態回寫。下面是安全順序。</p>
+        </div>
+      </div>
+      <div class="grid">
+        <article class="card">
+          <h3>Phase 1：發布包</h3>
+          <p>Dashboard 產生 Manifest：影片路徑、標題、描述、hashtag、平台清單、排程時間。</p>
+          <small>已建置</small>
+        </article>
+        <article class="card">
+          <h3>Phase 2：YouTube</h3>
+          <p>先接 YouTube。OAuth 完成後，後端讀 Manifest，上傳影片並回寫 video URL。</p>
+          <small>下一步</small>
+        </article>
+        <article class="card">
+          <h3>Phase 3：Meta / TikTok</h3>
+          <p>Instagram/Facebook/Threads 走 Meta App；TikTok 走 Content Posting API；小紅書先用 KAWO 或手機排程。</p>
+          <small>需帳號授權</small>
+        </article>
+      </div>
+      <div class="actions">
+        <a class="btn secondary" href="https://developers.google.com/youtube/v3/guides/uploading_a_video">YouTube 官方上傳文件</a>
+        <a class="btn secondary" href="https://developers.facebook.com/documentation/instagram-platform/content-publishing">Instagram 官方發布文件</a>
+        <a class="btn secondary" href="https://developers.tiktok.com/doc/content-posting-api-get-started">TikTok 官方發布文件</a>
+        <a class="btn secondary" href="https://developers.facebook.com/documentation/threads">Threads 官方 API</a>
+        <a class="btn secondary" href="https://kawo.com/en/help-center/creating-content/creating-xiaohongshu-notes-in-kawo">KAWO 小紅書發布說明</a>
+      </div>
+    </section>
+
+    <section class="shell section" id="video">
+      <div class="section-head">
+        <div>
+          <h2>EP1 素材入口</h2>
+          <p>目前 EP1 的可用素材與 prompt 都集中在這裡。</p>
+        </div>
+      </div>
+      <div class="grid">
+        <a class="card" href="outputs/video_content_engine/episodes/EP1_Kling_one_table_v2_0.xlsx"><h3>EP1 V2.0 Excel</h3><p>完整 Shot list、素材、Prompt、字幕。</p><small>Open</small></a>
+        <a class="card" href="outputs/video_content_engine/episodes/EP1_remaining_Kling_director_prompts_v2_0.md"><h3>後段 Kling Prompt</h3><p>Shot 04-08 導演級 prompt。</p><small>Open</small></a>
+        <a class="card" href="outputs/video_content_engine/episodes/EP1_Shot03_Kling_final_director_prompt_v1_9.md"><h3>Shot 03 AlphaGo 橋接</h3><p>AlphaGo 勝率推演到草莓存活率。</p><small>Open</small></a>
+      </div>
+    </section>
+
+    <section class="shell section" id="strategy">
+      <div class="section-head">
+        <div>
+          <h2>Codex x Claude 融合策略</h2>
+          <p>這兩份文件是交接給 Claude Code 的乾淨真相來源：一份講已開發網頁資產，一份講未來 90 天市場銷售策略。</p>
+        </div>
+      </div>
+      <div class="grid">
+        <a class="card" href="outputs/sales_strategy_agents/WEGROW_CODEX_CLAUDE_MASTER_HANDOFF.md"><h3>MASTER 總交接文件</h3><p>Codex / Claude 接手時先讀這份：整合網站、影片、社群、Notion、Sales CRM、企業認養與 90 天 PDCA。</p><small>Open</small></a>
+        <a class="card" href="https://sales.wegrow-orbit.com/"><h3>WeGrow 銷售情報中心</h3><p>正式 Sales CRM 架構入口。未登入前只確認登入頁，不猜內部功能。</p><small>Open</small></a>
+        <a class="card" href="outputs/sales_strategy_agents/舊/"><h3>舊版策略檔</h3><p>舊版 v0.1 已歸檔，只做參考，不再當作主要交接起點。</p><small>Open</small></a>
+        <a class="card" href="outputs/sales_strategy_agents/CODEX_RESPONSE_TO_CLAUDE_MARKET_STRATEGY_v0_1.md"><h3>Codex 回覆 Claude</h3><p>逐題回答證據包、買家查證、內容實驗表、start 進度與企業認養雙版本收斂。</p><small>Open</small></a>
+        <a class="card" href="outputs/sales_strategy_agents/CODEX_CHALLENGE_QUESTIONS_FOR_CLAUDE_v0_1.md"><h3>給 Claude 的挑戰題</h3><p>要求 Claude 反過來回答買家優先順序、Offer、證據優先級、Outreach、內容 KPI 與風險反證。</p><small>Open</small></a>
+        <a class="card" href="outputs/sales_strategy_agents/CODEX_V0_BUILD_CHALLENGE_FOR_CLAUDE_v0_1.md"><h3>V0 Build 挑戰題</h3><p>要求 Claude 聚焦 V0 唯讀 dashboard、銷售訊號、買家查證、EP1 銷售橋接與拖延瓶頸。</p><small>Open</small></a>
+        <a class="card" href="outputs/sales_strategy_agents/CODEX_RESPONSE_TO_CLAUDE_V0_BUILD_RESPONSE_v0_1.md"><h3>Codex 回覆 V0 Build</h3><p>接受首屏 5 widget，回答 Claude 5 題，並補上 V0 dashboard seed 與下一輪台灣銷售作戰表要求。</p><small>Open</small></a>
+        <a class="card" href="outputs/sales_dashboard/sales_dashboard_data_v0_1.json"><h3>V0 Dashboard Seed</h3><p>首屏 5 widget、缺口、今日 3 件事與台灣銷售阻塞點，給後續 dashboard 讀取。</p><small>Open</small></a>
+        <a class="card" href="http://127.0.0.1:8787/"><h3>Sales V0 Dashboard</h3><p>Clement 每日入口：台灣銷售作戰桌。需先用本機伺服器啟動，避免 file:// 讀不到 JSON。</p><small>Open Local Server</small></a>
+        <a class="card" href="outputs/wegrow_sales_v0/index.html"><h3>Sales V0 file fallback</h3><p>只作檔案檢視備援。若直接用 file:// 開啟，瀏覽器可能擋掉 JSON fetch，功能不保證完整。</p><small>Open File</small></a>
+        <a class="card" href="outputs/wegrow_sales_v0/WEGROW_SALES_V0_WEBSITE_DEV_HANDOFF.md"><h3>Sales V0 開發交接</h3><p>網站開發交接 MD：檔案結構、商譯命名、V0 限制、啟動方式、QA、部署判斷與下一步。</p><small>Open</small></a>
+        <a class="card" href="outputs/wegrow_sales_v0/design_options/SALES_V0_TAB_ARCHITECTURE_A_PLUS_C.md"><h3>A+C Tab 架構</h3><p>依 Orbit 作戰控制台融合商譯情報引擎，定義今日作業單、CRM、商譯、甘特圖、戰略沙盤與接觸資料。</p><small>Open</small></a>
+        <a class="card" href="outputs/sales_strategy_agents/CODEX_RESPONSE_TO_CLAUDE_PRICE_BENCHMARK_v0_1.md"><h3>價格 Benchmark 修正</h3><p>交叉驗證台灣大湖與日本あまおう價格，標出可用對標與不可對外宣稱的定價邊界。</p><small>Open</small></a>
+        <a class="card" href="outputs/sales_strategy_agents/B2B_EVIDENCE_PACK_TEMPLATE_v0_1.md"><h3>B2B 證據包範本</h3><p>採購信寄出前必備：規格、驗證、產季、量、冷鏈、包裝、ESG 與核准狀態。</p><small>Open</small></a>
+        <a class="card" href="outputs/sales_strategy_agents/CONTENT_EXPERIMENT_TABLE_SCHEMA_v0_1.md"><h3>內容實驗表 Schema</h3><p>把每支短影音變成可追蹤的 Hook、平台、名單與銷售 PDCA 實驗。</p><small>Open</small></a>
+      </div>
+    </section>
+  </main>
+
+  <footer class="shell">
+    WeGrow Social Command Center。先把內容發布流程做穩，再接自動上傳。所有社群 API token 都不應放在這個靜態 HTML 裡，之後會由本機後端或雲端 worker 安全處理。
+  </footer>
+
+  <script>
+    const channels = ["youtube", "instagram", "tiktok", "facebook", "linkedin", "threads", "xiaohongshu", "x", "medium", "website"];
+    const storagePrefix = "wegrow-social-dashboard:";
+    const $ = (selector) => document.querySelector(selector);
+    const $$ = (selector) => Array.from(document.querySelectorAll(selector));
+
+    function save(key, value) {
+      localStorage.setItem(storagePrefix + key, value);
+    }
+
+    function read(key, fallback = "") {
+      return localStorage.getItem(storagePrefix + key) ?? fallback;
+    }
+
+    function updateScores() {
+      let readyChannels = 0;
+      channels.forEach((channel) => {
+        const checks = $$(`[data-channel="${channel}"]`);
+        const done = checks.length > 0 && checks.every((item) => item.checked);
+        const badge = $(`[data-channel-badge="${channel}"]`);
+        if (badge) {
+          badge.textContent = done ? "完成" : `${checks.filter((item) => item.checked).length}/${checks.length}`;
+          badge.className = done ? "badge ready" : "badge";
+        }
+        if (done) readyChannels += 1;
+      });
+      $("#channelScore").textContent = `${readyChannels}/${channels.length}`;
+
+      const assetChecks = $$("[data-asset-check]");
+      const assetDone = assetChecks.filter((item) => item.checked).length;
+      $("#assetScore").textContent = `${assetDone}/${assetChecks.length}`;
+    }
+
+    function loadState() {
+      $$("input[data-channel], input[data-asset-check]").forEach((item) => {
+        const key = item.dataset.channel
+          ? `channel:${item.dataset.channel}:${item.dataset.step}`
+          : `asset:${item.dataset.assetCheck}`;
+        item.checked = read(key) === "true";
+        item.addEventListener("change", () => {
+          save(key, item.checked);
+          updateScores();
+        });
+      });
+
+      ["videoPath", "postTitle", "postCaption", "postCta", "hashtags"].forEach((id) => {
+        const input = $("#" + id);
+        input.value = read(`field:${id}`, input.value);
+        input.addEventListener("input", () => save(`field:${id}`, input.value));
+      });
+      updateScores();
+    }
+
+    function buildManifest() {
+      const selectedPlatforms = channels.filter((channel) => {
+        const checks = $$(`[data-channel="${channel}"]`);
+        return checks.length && checks.every((item) => item.checked);
+      });
+      return {
+        project: "WeGrow",
+        content_id: "EP1_strawberry_ai_agriculture",
+        created_at: new Date().toISOString(),
+        video_path: $("#videoPath").value.trim(),
+        title: $("#postTitle").value.trim(),
+        caption: $("#postCaption").value.trim(),
+        cta: $("#postCta").value.trim(),
+        hashtags: $("#hashtags").value.trim().split(/\s+/).filter(Boolean),
+        platforms_ready: selectedPlatforms,
+        platforms_all: channels,
+        human_approval_required: true,
+        status: selectedPlatforms.length ? "ready_for_connector" : "setup_required"
+      };
+    }
+
+    $("#copyManifestButton").addEventListener("click", async () => {
+      const manifest = JSON.stringify(buildManifest(), null, 2);
+      $("#manifestBox").textContent = manifest;
+      try { await navigator.clipboard.writeText(manifest); } catch (error) {}
+    });
+
+    $("#savePublishPackButton").addEventListener("click", () => {
+      ["videoPath", "postTitle", "postCaption", "postCta", "hashtags"].forEach((id) => save(`field:${id}`, $("#" + id).value));
+      $("#manifestBox").textContent = "已儲存本次發布資料。下一步按「產生發布 Manifest」。";
+    });
+
+    $("#resetPublishButton").addEventListener("click", () => {
+      $$("[data-asset-check]").forEach((item) => {
+        item.checked = false;
+        save(`asset:${item.dataset.assetCheck}`, false);
+      });
+      updateScores();
+    });
+
+    loadState();
+  </script>
+</body>
+</html>
