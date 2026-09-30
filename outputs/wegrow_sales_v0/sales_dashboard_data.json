@@ -90,6 +90,100 @@
       }
     ]
   },
+  "social_follow_sync": {
+    "updated_at": "2026-09-30",
+    "source": "Google Sheet 先做這14家 + LINE OA / Facebook Page 實際操作",
+    "line_done": 11,
+    "facebook_done": 11,
+    "total": 14,
+    "policy": "只加入官方 LINE 與用 WeGrow 威果農業粉專追蹤；未私訊、未留言、未按讚。未核實官方頁先不追。",
+    "rows": [
+      {
+        "company": "千森製菓",
+        "line": "已加/已是好友：chenpinyin",
+        "facebook": "已追蹤中：ChimoriSeika",
+        "next_action": "可觀察內容與等待對方回覆，不主動密集催問。"
+      },
+      {
+        "company": "蘿芙甜點",
+        "line": "已加入：@tvg7070u",
+        "facebook": "已追蹤中：loftpatisserie",
+        "next_action": "保留暖客狀態，後續用草莓/甜點合作角度跟進。"
+      },
+      {
+        "company": "于生繁花",
+        "line": "已可聊天：@yueverblossom",
+        "facebook": "未找到可核實粉專",
+        "next_action": "先走 LINE 官方帳號，不追不明 Facebook 頁。"
+      },
+      {
+        "company": "花草遊戲花藝學苑",
+        "line": "已可聊天：@flora.fun",
+        "facebook": "已追蹤中：florawithfun",
+        "next_action": "可用花藝/草莓禮盒/體驗課程方向觀察。"
+      },
+      {
+        "company": "承億酒店",
+        "line": "已加入/已開聊天室：@244imrjl",
+        "facebook": "已追蹤中：TAIUrbanResort.kaohsiung",
+        "next_action": "等餐飲、禮盒或活動檔期訊號，不直接硬推。"
+      },
+      {
+        "company": "和逸飯店台南西門館",
+        "line": "已加入：@966pkxfw",
+        "facebook": "已追蹤中：hotelcozzixm",
+        "next_action": "飯店合作先等窗口與檔期，不先正式報價。"
+      },
+      {
+        "company": "奧瑪烘焙",
+        "line": "已加入：@vnv9975s",
+        "facebook": "已追蹤中：auma168",
+        "next_action": "用烘焙草莓原料與聯名甜點角度保留。"
+      },
+      {
+        "company": "Mia C'bon",
+        "line": "已加入：@844smqcw",
+        "facebook": "已追蹤中：miacbon",
+        "next_action": "通路合作仍需 G2 具名窗口與 G3 證據包。"
+      },
+      {
+        "company": "AAMA／創業者共創平台",
+        "line": "未找到已核實官方 LINE",
+        "facebook": "未找到可核實粉專",
+        "next_action": "先暫停追蹤，改由官網/Email/人脈查核。"
+      },
+      {
+        "company": "四葉國際餐旅／SOL",
+        "line": "已加入：@sol.tainan",
+        "facebook": "未找到可核實粉專",
+        "next_action": "先走 LINE，Facebook 等官方來源再補。"
+      },
+      {
+        "company": "主婦聯盟",
+        "line": "已加入可聊天：@efp3888k",
+        "facebook": "已追蹤中：hucccoop",
+        "next_action": "需要規格、檢驗、合作邏輯清楚後再推進。"
+      },
+      {
+        "company": "台灣好農",
+        "line": "已加入可聊天：@fgw9516d",
+        "facebook": "已追蹤中：wonderfulfoodclub",
+        "next_action": "觀察選品/產地故事語感，後續再找窗口。"
+      },
+      {
+        "company": "聖德科斯",
+        "line": "未找到已核實官方 LINE",
+        "facebook": "已追蹤中：SANTACRUZ.ORG",
+        "next_action": "LINE 暫缺；FB 先低頻觀察通路採購語境。"
+      },
+      {
+        "company": "饗賓餐旅",
+        "line": "未找到已核實官方 LINE",
+        "facebook": "已追蹤中：eatogether",
+        "next_action": "餐飲集團需具名窗口，未補前不寄正式銷售信。"
+      }
+    ]
+  },
   "buyer_pipeline": [
     {
       "buyer_id": "GSC-010",

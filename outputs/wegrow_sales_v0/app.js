@@ -227,6 +227,39 @@ function renderPublishTable(data) {
   `;
 }
 
+function isSocialDone(value) {
+  const text = String(value || "");
+  return /已|追蹤中|可聊天|好友/.test(text) && !/未找到|暫缺|不可|不明/.test(text);
+}
+
+function renderSocialFollow(data) {
+  const sync = data.social_follow_sync;
+  if (!sync) return;
+  const rows = sync.rows.map((item) => {
+    const lineDone = isSocialDone(item.line);
+    const facebookDone = isSocialDone(item.facebook);
+    return `
+      <tr>
+        <td>${item.company}</td>
+        <td><span class="badge ${lineDone ? "ready" : "missing"}">${lineDone ? "LINE OK" : "待核實"}</span><br>${item.line}</td>
+        <td><span class="badge ${facebookDone ? "ready" : "missing"}">${facebookDone ? "FB OK" : "待核實"}</span><br>${item.facebook}</td>
+        <td>${item.next_action}</td>
+      </tr>
+    `;
+  }).join("");
+  const lineDone = sync.rows.filter((item) => isSocialDone(item.line)).length;
+  const facebookDone = sync.rows.filter((item) => isSocialDone(item.facebook)).length;
+  const missing = sync.rows.filter((item) => !isSocialDone(item.line) || !isSocialDone(item.facebook)).length;
+  $("#social-follow-meta").textContent = `${sync.updated_at}｜${sync.source}｜${sync.policy}`;
+  $("#line-follow-summary").textContent = `${lineDone} / ${sync.total}`;
+  $("#fb-follow-summary").textContent = `${facebookDone} / ${sync.total}`;
+  $("#social-missing-summary").textContent = String(missing);
+  $("#social-follow-table").innerHTML = `
+    <thead><tr><th>客戶</th><th>LINE 官方帳號</th><th>Facebook 粉專</th><th>下一步</th></tr></thead>
+    <tbody>${rows}</tbody>
+  `;
+}
+
 function renderLeadTable(data) {
   const rows = data.reply_queue.rows.map((item) => `
     <tr>
@@ -1422,6 +1455,7 @@ function renderDashboard(data) {
   renderRisks(data);
   renderContentTable(data);
   renderPublishTable(data);
+  renderSocialFollow(data);
   renderLeadTable(data);
   renderBuyerTable(data);
   renderEvidenceTable(data);

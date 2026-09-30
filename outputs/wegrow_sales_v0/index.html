@@ -70,6 +70,7 @@
             <button class="subtab active" data-subpanel="sales-today" type="button">今日作業</button>
             <button class="subtab" data-subpanel="sales-ai-health" type="button">客戶 AI 健檢</button>
             <button class="subtab" data-subpanel="sales-content" type="button">內容發布</button>
+            <button class="subtab" data-subpanel="sales-social" type="button">社群代管</button>
             <button class="subtab" data-subpanel="sales-leads" type="button">留言名單</button>
             <button class="subtab" data-subpanel="sales-buyers" type="button">買家 Gate</button>
             <button class="subtab" data-subpanel="sales-evidence" type="button">證據包</button>
@@ -127,6 +128,31 @@
             <h2>發布佇列</h2>
             <table id="publish-table"></table>
             <p class="note">V0 只顯示佇列，不自動發布。任何跨平台發布、寄信、預購收款都要 Clement 人工核准。</p>
+          </section>
+
+          <section class="subpanel-section" id="sales-social">
+            <div class="panel-head">
+              <div>
+                <h2>14 家客戶社群代管同步</h2>
+                <p id="social-follow-meta"></p>
+              </div>
+            </div>
+            <section class="summary-grid social-summary" aria-label="社群代管摘要">
+              <article class="summary-card">
+                <span class="summary-label">LINE 已加入/可聊</span>
+                <strong id="line-follow-summary">0 / 0</strong>
+              </article>
+              <article class="summary-card">
+                <span class="summary-label">FB 已追蹤</span>
+                <strong id="fb-follow-summary">0 / 0</strong>
+              </article>
+              <article class="summary-card danger">
+                <span class="summary-label">待核實官方頁</span>
+                <strong id="social-missing-summary">0</strong>
+              </article>
+            </section>
+            <table id="social-follow-table"></table>
+            <p class="note">本次只加入 LINE / 追蹤 Facebook 粉專；未送出私訊、留言或按讚。未核實的官方頁先不追，避免錯追。</p>
           </section>
 
           <section class="subpanel-section" id="sales-leads">
