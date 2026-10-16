@@ -3,6 +3,7 @@ import { requireAdmin } from "@/lib/auth/current-member";
 import { getDb } from "@/lib/db/client";
 import { newId } from "@/lib/db/uuid";
 import { reminderAtForVisit, reminderDedupeKey } from "@/lib/farm/reminders";
+import { queueMadouWorkCard } from "@/lib/line/madou-group-queue";
 
 const bodySchema = z.object({
   newSlotId: z.string().min(1).max(100),
@@ -20,12 +21,19 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
   const now = new Date().toISOString();
 
   const before = await db
-    .prepare("SELECT slot_id, total_people, booking_status, cancelled_at, arrived_at, completed_at, customer_member_id, visit_version FROM farm_bookings WHERE id = ?")
+    .prepare(
+      `SELECT slot_id, total_people, booking_status, cancelled_at, arrived_at, completed_at, customer_member_id, visit_version,
+              booking_number, group_name, adult_count, child_count, infant_count, plant_count, meal_count, vegetarian_meal_count
+       FROM farm_bookings WHERE id = ?`,
+    )
     .bind(id)
     .first<{
       slot_id: string; total_people: number; booking_status: string;
       cancelled_at: string | null; arrived_at: string | null; completed_at: string | null;
       customer_member_id: string | null; visit_version: number;
+      booking_number: string; group_name: string | null;
+      adult_count: number; child_count: number; infant_count: number;
+      plant_count: number; meal_count: number; vegetarian_meal_count: number;
     }>();
   if (!before) return Response.json({ error: "找不到這筆預約" }, { status: 404 });
   if (newSlotId === before.slot_id) return Response.json({ error: "新時段和目前時段相同" }, { status: 400 });
@@ -116,11 +124,30 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     .bind(id)
     .run();
 
-  // If the booking was already confirmed, re-queue a day-before reminder for
-  // the new date (mirrors the confirm-action queueing in the status route).
-  if (before.booking_status === "confirmed" && before.customer_member_id) {
-    const slot = await db.prepare("SELECT starts_at FROM farm_slots WHERE id = ?").bind(newSlotId).first<{ starts_at: string }>();
-    if (slot) {
+  // 現場認領失效，不默認原接待人在新日期還有空（規格第4.2節）；要重新「我接單」。
+  await db
+    .prepare("UPDATE farm_bookings SET claimed_by_member_id = NULL, claimed_at = NULL, claim_released_at = ? WHERE id = ?")
+    .bind(now, id)
+    .run();
+
+  // If the booking was already confirmed, re-queue a day-before reminder (only
+  // meaningful if there's a LINE-linked customer to remind) and a Madou group
+  // work-card update (always — the group cares about every confirmed booking's
+  // reschedule regardless of whether the customer is LINE-linked; this was a real
+  // bug caught by curling the running dev server: both were originally gated on
+  // the SAME `before.customer_member_id` check, so an unlinked booking's
+  // reschedule silently never reached the group at all).
+  if (before.booking_status === "confirmed") {
+    const slot = await db
+      .prepare(
+        `SELECT s.starts_at, s.ends_at, e.name AS experience_name
+         FROM farm_slots s JOIN farm_experiences e ON e.id = s.experience_id
+         WHERE s.id = ?`,
+      )
+      .bind(newSlotId)
+      .first<{ starts_at: string; ends_at: string; experience_name: string }>();
+
+    if (before.customer_member_id && slot) {
       const scheduledAt = reminderAtForVisit(slot.starts_at).toISOString();
       const retryKey = reminderDedupeKey(id, newVisitVersion);
       await db
@@ -140,6 +167,20 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
           now,
         )
         .run();
+    }
+    const oldSlot = await db.prepare("SELECT starts_at FROM farm_slots WHERE id = ?").bind(before.slot_id).first<{ starts_at: string }>();
+    if (slot && oldSlot) {
+      await queueMadouWorkCard(db, newVisitVersion, {
+        eventKind: "rescheduled",
+        oldStartsAt: oldSlot.starts_at,
+        booking: {
+          bookingId: id, bookingNumber: before.booking_number, groupName: before.group_name,
+          experience: slot.experience_name, startsAt: slot.starts_at, endsAt: slot.ends_at,
+          adultCount: before.adult_count, childCount: before.child_count, infantCount: before.infant_count,
+          totalPeople: before.total_people, plantCount: before.plant_count, mealCount: before.meal_count,
+          vegetarianMealCount: before.vegetarian_meal_count,
+        },
+      });
     }
   }
 

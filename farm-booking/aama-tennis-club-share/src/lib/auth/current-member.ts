@@ -10,7 +10,7 @@ import { isAdmin, isStaff, type StaffRole } from "./roles";
 
 export {
   isAdmin, isStaff, STAFF_ROLES, type StaffRole,
-  canManageSchedule, canHandlePayment, canCheckIn, canViewFullOrders, canViewSettings,
+  canManageSchedule, canHandlePayment, canCheckIn, canClaimBooking, canViewFullOrders, canViewSettings,
 } from "./roles";
 
 export const getCurrentMember = cache(async (): Promise<Member | null> => {

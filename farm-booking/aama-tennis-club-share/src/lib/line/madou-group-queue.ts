@@ -1,0 +1,86 @@
+import "server-only";
+import { newId } from "@/lib/db/uuid";
+import {
+  composeDailyDigestText, madouDigestDedupeKey, madouWorkCardDedupeKey,
+  type DailyDigestBooking, type WorkCardBooking, type WorkCardEventKind,
+} from "./madou-group-text";
+
+// Sentinel recipient_id — farm_notification_outbox.recipient_id normally FKs
+// (informally; no DB-level FK since members can be deleted) to a members row via
+// jobs/reminders' join, but a LINE group isn't a member. channel='line_group' is
+// what tells the Madou-group job to treat recipient_id as this constant instead of
+// looking it up in members.
+export const MADOU_GROUP_RECIPIENT_ID = "madou_group";
+
+export type MadouWorkCardSnapshot = {
+  eventKind: WorkCardEventKind;
+  booking: WorkCardBooking;
+  oldStartsAt?: string; // only set for eventKind === "rescheduled"
+};
+
+// INSERT OR IGNORE on the versioned+event-kind-scoped retry_key: calling this
+// twice for the same (booking, visitVersion, eventKind) is a no-op, same
+// idempotency guarantee queueSalesSyncEvent already relies on.
+export async function queueMadouWorkCard(db: D1Database, visitVersion: number, snapshot: MadouWorkCardSnapshot): Promise<void> {
+  const now = new Date().toISOString();
+  const retryKey = madouWorkCardDedupeKey(snapshot.booking.bookingId, visitVersion, snapshot.eventKind);
+  await db
+    .prepare(
+      `INSERT OR IGNORE INTO farm_notification_outbox
+       (id, booking_id, channel, notification_type, recipient_id, content_snapshot_json, retry_key, status, attempt_count, scheduled_at, next_attempt_at, created_at)
+       VALUES (?, ?, 'line_group', 'madou_work_card_event', ?, ?, ?, 'queued', 0, ?, ?, ?)`,
+    )
+    .bind(newId(), snapshot.booking.bookingId, MADOU_GROUP_RECIPIENT_ID, JSON.stringify(snapshot), retryKey, now, now, now)
+    .run();
+}
+
+type TomorrowBookingRow = {
+  booking_number: string;
+  group_name: string | null;
+  starts_at: string;
+  total_people: number;
+  claimed_by_name: string | null;
+};
+
+// Producer half of the daily digest (consumer half sends whatever's queued, same
+// as any other outbox row — see jobs/madou-group/route.ts). booking_id is
+// deliberately NULL here: the digest spans every booking for the date, not one.
+// Idempotent per calendar date via INSERT OR IGNORE on the date-scoped retry_key —
+// returns whether this call actually created the row (false if already enqueued
+// today, or if it's not due yet).
+export async function queueDailyDigestIfDue(db: D1Database, now: Date): Promise<boolean> {
+  const { isDigestDue, digestTargetDateIso } = await import("@/lib/farm/madou-digest-schedule");
+  if (!isDigestDue(now)) return false;
+  const targetDate = digestTargetDateIso(now);
+  const retryKey = madouDigestDedupeKey(targetDate);
+
+  const rows = await db
+    .prepare(
+      `SELECT b.booking_number, b.group_name, s.starts_at, b.total_people, m.display_name AS claimed_by_name
+       FROM farm_bookings b
+       JOIN farm_slots s ON s.id = b.slot_id
+       LEFT JOIN members m ON m.id = b.claimed_by_member_id
+       WHERE b.booking_status = 'confirmed' AND b.cancelled_at IS NULL
+         AND date(s.starts_at, '+8 hours') = ?
+       ORDER BY s.starts_at`,
+    )
+    .bind(targetDate)
+    .all<TomorrowBookingRow>();
+
+  const digestBookings: DailyDigestBooking[] = (rows.results ?? []).map((r) => ({
+    bookingNumber: r.booking_number, groupName: r.group_name, startsAt: r.starts_at,
+    totalPeople: r.total_people, claimedByName: r.claimed_by_name,
+  }));
+  const text = composeDailyDigestText(targetDate, digestBookings);
+  const nowIso = now.toISOString();
+
+  const result = await db
+    .prepare(
+      `INSERT OR IGNORE INTO farm_notification_outbox
+       (id, booking_id, channel, notification_type, recipient_id, content_snapshot_json, retry_key, status, attempt_count, scheduled_at, next_attempt_at, created_at)
+       VALUES (?, NULL, 'line_group', 'madou_daily_digest', ?, ?, ?, 'queued', 0, ?, ?, ?)`,
+    )
+    .bind(newId(), MADOU_GROUP_RECIPIENT_ID, JSON.stringify({ targetDate, text }), retryKey, nowIso, nowIso, nowIso)
+    .run();
+  return result.meta.changes > 0;
+}

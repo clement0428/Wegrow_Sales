@@ -3,6 +3,7 @@ import { canCheckIn, isAdmin, requireStaff } from "@/lib/auth/current-member";
 import { getDb } from "@/lib/db/client";
 import { newId } from "@/lib/db/uuid";
 import { reminderAtForVisit, reminderDedupeKey } from "@/lib/farm/reminders";
+import { queueMadouWorkCard } from "@/lib/line/madou-group-queue";
 import { queueSalesSyncEvent } from "@/lib/sales/queue";
 
 const bodySchema = z.object({
@@ -62,7 +63,12 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
   const transition = TRANSITIONS[action];
 
   const before = await db
-    .prepare("SELECT booking_status, cancelled_at, arrived_at, completed_at, customer_member_id, visit_version, slot_id FROM farm_bookings WHERE id = ?")
+    .prepare(
+      `SELECT booking_status, cancelled_at, arrived_at, completed_at, customer_member_id, visit_version, slot_id,
+              booking_number, group_name, adult_count, child_count, infant_count, total_people,
+              plant_count, meal_count, vegetarian_meal_count
+       FROM farm_bookings WHERE id = ?`,
+    )
     .bind(id)
     .first<{
       booking_status: string;
@@ -72,6 +78,15 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
       customer_member_id: string | null;
       visit_version: number;
       slot_id: string;
+      booking_number: string;
+      group_name: string | null;
+      adult_count: number;
+      child_count: number;
+      infant_count: number;
+      total_people: number;
+      plant_count: number;
+      meal_count: number;
+      vegetarian_meal_count: number;
     }>();
   if (!before) return Response.json({ error: "找不到這筆預約" }, { status: 404 });
 
@@ -99,29 +114,49 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     .run();
 
   if (action === "confirm") {
-    if (before.customer_member_id) {
-      const slot = await db.prepare("SELECT starts_at FROM farm_slots WHERE id = ?").bind(before.slot_id).first<{ starts_at: string }>();
-      if (slot) {
-        const scheduledAt = reminderAtForVisit(slot.starts_at).toISOString();
-        const retryKey = reminderDedupeKey(id, before.visit_version);
-        await db
-          .prepare(
-            `INSERT OR IGNORE INTO farm_notification_outbox
-             (id, booking_id, channel, notification_type, recipient_id, content_snapshot_json, retry_key, status, attempt_count, scheduled_at, next_attempt_at, created_at)
-             VALUES (?, ?, 'line', 'day_before_reminder', ?, ?, ?, 'queued', 0, ?, ?, ?)`,
-          )
-          .bind(
-            newId(),
-            id,
-            before.customer_member_id,
-            JSON.stringify({ bookingId: id, visitVersion: before.visit_version, note: "LINE Messaging API credentials not configured — this row queues, actual send is BLOCKED until credentials exist. See jobs/reminders route." }),
-            retryKey,
-            scheduledAt,
-            scheduledAt,
-            now,
-          )
-          .run();
-      }
+    const slot = await db
+      .prepare(
+        `SELECT s.starts_at, s.ends_at, e.name AS experience_name
+         FROM farm_slots s JOIN farm_experiences e ON e.id = s.experience_id
+         WHERE s.id = ?`,
+      )
+      .bind(before.slot_id)
+      .first<{ starts_at: string; ends_at: string; experience_name: string }>();
+
+    if (before.customer_member_id && slot) {
+      const scheduledAt = reminderAtForVisit(slot.starts_at).toISOString();
+      const retryKey = reminderDedupeKey(id, before.visit_version);
+      await db
+        .prepare(
+          `INSERT OR IGNORE INTO farm_notification_outbox
+           (id, booking_id, channel, notification_type, recipient_id, content_snapshot_json, retry_key, status, attempt_count, scheduled_at, next_attempt_at, created_at)
+           VALUES (?, ?, 'line', 'day_before_reminder', ?, ?, ?, 'queued', 0, ?, ?, ?)`,
+        )
+        .bind(
+          newId(),
+          id,
+          before.customer_member_id,
+          JSON.stringify({ bookingId: id, visitVersion: before.visit_version, note: "LINE Messaging API credentials not configured — this row queues, actual send is BLOCKED until credentials exist. See jobs/reminders route." }),
+          retryKey,
+          scheduledAt,
+          scheduledAt,
+          now,
+        )
+        .run();
+    }
+    // 規格第3-4節「新預約工作卡」：confirm 當下就發到麻豆現場群，不等到前一天——
+    // 現場需要提早知道有新團才能安排接待與備料。
+    if (slot) {
+      await queueMadouWorkCard(db, before.visit_version, {
+        eventKind: "confirmed",
+        booking: {
+          bookingId: id, bookingNumber: before.booking_number, groupName: before.group_name,
+          experience: slot.experience_name, startsAt: slot.starts_at, endsAt: slot.ends_at,
+          adultCount: before.adult_count, childCount: before.child_count, infantCount: before.infant_count,
+          totalPeople: before.total_people, plantCount: before.plant_count, mealCount: before.meal_count,
+          vegetarianMealCount: before.vegetarian_meal_count,
+        },
+      });
     }
     await queueSalesSyncEvent(db, id, "booking_confirmed");
   }
@@ -134,6 +169,28 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
       .prepare("UPDATE farm_notification_outbox SET status = 'cancelled' WHERE booking_id = ? AND status = 'queued'")
       .bind(id)
       .run();
+    // 現場認領失效，不是靠AI猜員工還有沒有空——規格第4.2節「改期後不默認原接待
+    // 人有空」同樣適用於取消。
+    await db
+      .prepare("UPDATE farm_bookings SET claimed_by_member_id = NULL, claimed_at = NULL, claim_released_at = ? WHERE id = ?")
+      .bind(now, id)
+      .run();
+    const slot = await db
+      .prepare("SELECT starts_at FROM farm_slots WHERE id = ?")
+      .bind(before.slot_id)
+      .first<{ starts_at: string }>();
+    if (slot) {
+      await queueMadouWorkCard(db, before.visit_version, {
+        eventKind: "cancelled",
+        booking: {
+          bookingId: id, bookingNumber: before.booking_number, groupName: before.group_name,
+          experience: "", startsAt: slot.starts_at, endsAt: slot.starts_at,
+          adultCount: before.adult_count, childCount: before.child_count, infantCount: before.infant_count,
+          totalPeople: before.total_people, plantCount: before.plant_count, mealCount: before.meal_count,
+          vegetarianMealCount: before.vegetarian_meal_count,
+        },
+      });
+    }
     await queueSalesSyncEvent(db, id, "booking_cancelled");
   }
 

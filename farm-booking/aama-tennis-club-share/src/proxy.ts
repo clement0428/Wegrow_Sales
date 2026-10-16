@@ -10,6 +10,12 @@ const PUBLIC_PREFIXES = [
   // not a logged-in user. Without this, every call 307-redirected to
   // /login before the route's own auth ever ran.
   "/api/jobs",
+  // Same reasoning, same bug shape as /api/jobs above (2026-10-16): LINE's
+  // webhook caller has no browser session — it authenticates via
+  // x-line-signature (HMAC against the channel secret), verified inside the
+  // route itself. Caught this by actually curling the endpoint locally; it
+  // was 307-redirecting to /login before ever reaching the signature check.
+  "/api/line/webhook",
 ];
 
 export function proxy(req: NextRequest) {

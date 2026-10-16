@@ -17,4 +17,9 @@ export const env = {
   // Sales app grows one (see docs/booking-calendar-implementation.md).
   get SALES_SYNC_API_URL(): string | undefined { return process.env.SALES_SYNC_API_URL || undefined; },
   get SALES_SYNC_API_KEY(): string | undefined { return process.env.SALES_SYNC_API_KEY || undefined; },
+  // 麻豆現場群：webhook驗簽用的channel secret（跟LINE_MESSAGING_ACCESS_TOKEN同一個
+  // Messaging API channel，但是不同的憑證種類）；群組本身的ID。兩者未設定前，
+  // webhook一律401、工作卡一律不發送——不是故障，是安全預設。
+  get LINE_MESSAGING_CHANNEL_SECRET(): string | undefined { return process.env.LINE_MESSAGING_CHANNEL_SECRET || undefined; },
+  get MADOU_GROUP_ID(): string | undefined { return process.env.MADOU_GROUP_ID || undefined; },
 };

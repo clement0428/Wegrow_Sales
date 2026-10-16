@@ -16,5 +16,6 @@ export const isStaff = (m: Member): m is Member & { role: StaffRole } => (STAFF_
 export const canManageSchedule = (m: Member) => m.role === "admin"; // 開放日期、改期
 export const canHandlePayment = (m: Member) => m.role === "admin"; // 收款登記
 export const canCheckIn = (m: Member) => m.role === "admin" || m.role === "reception"; // 報到
+export const canClaimBooking = (m: Member) => m.role === "admin" || m.role === "reception"; // 麻豆現場群「我接單」
 export const canViewFullOrders = (m: Member) => m.role === "admin" || m.role === "reception"; // 含聯絡方式／金額
 export const canViewSettings = (m: Member) => m.role === "admin";
