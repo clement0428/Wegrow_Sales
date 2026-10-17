@@ -6,7 +6,9 @@ import { findBooking, listMemberBookings } from "@/lib/farm/repository";
 import { getCurrentMember } from "@/lib/auth/current-member";
 import { isAllowedBookingSlot, ticketRateBpsForSlot } from "@/lib/farm/visit-policy";
 import { queueSalesSyncEvent } from "@/lib/sales/queue";
-import { checkAdoptionVisitEligibility } from "@/lib/farm/adoption-eligibility";
+import { redeemAdoptionEligibilityNonce } from "@/lib/farm/adoption-eligibility";
+import { checkEligibilitySession, markEligibilitySessionUsed } from "@/lib/farm/eligibility-session";
+import { taipeiDateIso } from "@/lib/farm/taipei-date";
 import { queueMadouWorkCard } from "@/lib/line/madou-group-queue";
 
 const createSchema = z.object({
@@ -22,20 +24,13 @@ const createSchema = z.object({
   groupName: z.string().trim().max(100).default(""),
   note: z.string().trim().max(1000).default(""),
   idempotencyKey: z.string().uuid(),
-  // 認養客戶免費參訪：email是farm-booking(LINE身分)跟Orbit企業認養入口(email身分)
-  // 唯一的橋接鍵，沒有既有連結可以沿用（見adoption-eligibility.ts）。省略此欄位
-  // 完全不影響既有付費/人工確認流程——這是新增能力，不是取代既有流程。
-  email: z.string().trim().toLowerCase().email().max(200).optional(),
+  // 認養客戶免費參訪（2026-10-17修正）：不再接受客戶自行填寫email——email只是
+  // 查詢鍵不是身分證明，任何人填別人的email就能冒用別人的認養資格。改成
+  // eligibilityNonce：客戶必須先在/api/farm/eligibility/start+Orbit真實登入走過
+  // 一輪nonce交換（見farm/eligibility-session.ts），這裡只接收那個已經被Orbit
+  // 核發過、尚未使用的nonce。省略此欄位完全不影響既有付費/人工確認流程。
+  eligibilityNonce: z.string().min(16).max(200).optional(),
 });
-
-function taipeiDateIso(isoDateTime: string): string {
-  const parts = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Taipei", year: "numeric", month: "2-digit", day: "2-digit" })
-    .formatToParts(new Date(isoDateTime));
-  const y = parts.find((p) => p.type === "year")?.value;
-  const m = parts.find((p) => p.type === "month")?.value;
-  const d = parts.find((p) => p.type === "day")?.value;
-  return `${y}-${m}-${d}`;
-}
 
 function makeLookupCode() {
   return crypto.randomUUID().replaceAll("-", "").slice(0, 8).toUpperCase();
@@ -91,29 +86,38 @@ export async function POST(request: Request) {
   }
   const ticketRateBps = ticketRateBpsForSlot(slot.starts_at);
 
-  // 認養客戶免費參訪（2026-10-17）：只在客戶主動提供email時才核對資格——省略
-  // email完全不影響既有付費/人工確認流程。資格核對以「所選參訪日期」為準，不是
-  // 以今天為準；查不到資格或服務本身打不通，一律不自動轉收費，直接拒絕這次送出
-  // 並清楚告知原因，交由Clement邀請／人工確認處理，不悄悄當成一般付費訂單。
+  // 認養客戶免費參訪（2026-10-17修正：nonce交換取代email自填）：只在客戶帶著
+  // eligibilityNonce送出時才核對資格——省略這個欄位完全不影響既有付費/人工確認
+  // 流程。資格核對以「所選參訪日期」為準，不是以今天為準；查不到資格、nonce已
+  // 過期/用過、或服務本身打不通，一律不自動轉收費，直接拒絕這次送出並清楚告知
+  // 原因，交由Clement邀請／人工確認處理，不悄悄當成一般付費訂單。
   let isAdoptionFreeVisit = false;
   let adoptionSourceOrganizationId: string | null = null;
   let adoptionSourceContractId: string | null = null;
-  if (input.email) {
+  if (input.eligibilityNonce) {
     if (input.plantCount > 0 || input.mealCount > 0) {
       return Response.json({ error: "認養客戶免費參訪暫不支援加購植栽或餐飲，如有需求請聯絡現場協助安排。" }, { status: 400 });
     }
     const visitDateIso = taipeiDateIso(slot.starts_at);
-    const eligibility = await checkAdoptionVisitEligibility(input.email, visitDateIso);
+    const localSession = await checkEligibilitySession(db, input.eligibilityNonce, visitDateIso);
+    if (!localSession.ok) {
+      return Response.json({
+        error: "免費參訪資格驗證已過期或已使用，請重新登入認養企業帳號再試一次。",
+        code: `eligibility_session_${localSession.reason}`,
+      }, { status: 403 });
+    }
+    const eligibility = await redeemAdoptionEligibilityNonce(input.eligibilityNonce, visitDateIso);
     if (!eligibility.ok) {
       return Response.json({ error: "認養資格查詢服務暫時無法使用，請稍後再試，或聯絡客服協助確認。", code: "eligibility_service_unavailable" }, { status: 503 });
     }
     if (!eligibility.eligible) {
       return Response.json({
-        error: "這個email目前不符合所選參訪日期的認養免費資格，如需協助請聯絡威果確認邀請或合約範圍。",
+        error: "這個資格驗證目前不符合所選參訪日期的認養免費資格，如需協助請聯絡威果確認邀請或合約範圍。",
         code: "not_eligible_for_free_visit",
         reason: eligibility.reason,
       }, { status: 403 });
     }
+    await markEligibilitySessionUsed(db, input.eligibilityNonce);
     isAdoptionFreeVisit = true;
     adoptionSourceOrganizationId = eligibility.sourceOrganizationId;
     adoptionSourceContractId = eligibility.sourceContractId;

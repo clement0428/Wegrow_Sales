@@ -47,6 +47,16 @@ type CheckoutState =
   | { status: "blocked"; message: string }
   | { status: "reserved"; bookingNumber: string; lookupCode: string; message: string; statusBucket: StatusBucket };
 
+// 認養企業客戶／Clement特別邀請的免費參訪資格（2026-10-17）：nonce只在Orbit用
+// 真實帳密核發eligible之後、瀏覽器被導回來時才會進入"confirmed"——"confirmed"
+// 只是前端UX狀態，真正能不能免費仍由後端在送出預約時再跟Orbit兌換一次nonce
+// 決定，前端這個狀態不是信任邊界。
+type EligibilityState =
+  | { status: "none" }
+  | { status: "pending" }
+  | { status: "confirmed"; nonce: string }
+  | { status: "denied" };
+
 type BookingRecord = {
   bookingNumber: string;
   lookupCode: string;
@@ -93,6 +103,7 @@ export default function FarmBookingApp({ initialView = "booking" }: { initialVie
   const [note, setNote] = useState("");
   const [consented, setConsented] = useState(false);
   const [checkout, setCheckout] = useState<CheckoutState>({ status: "idle" });
+  const [eligibility, setEligibility] = useState<EligibilityState>({ status: "none" });
   const [lineIdentity, setLineIdentity] = useState<LineIdentity>({
     status: process.env.NEXT_PUBLIC_LIFF_ID ? "loading" : "disabled",
   });
@@ -140,6 +151,47 @@ export default function FarmBookingApp({ initialView = "booking" }: { initialVie
       (window as unknown as { __LIFF_INIT_STATE__?: string }).__LIFF_INIT_STATE__ = lineIdentity.status;
     }
   }, [lineIdentity.status]);
+
+  // 客戶從Orbit登入頁被導回來：URL帶eligibilityNonce+eligible（純UX提示，不是
+  // 信任邊界——真正核對在submitBooking()送出時由後端跟Orbit再兌換一次）。讀完
+  // 立刻清掉URL參數，避免重新整理頁面時重複觸發或留在瀏覽紀錄裡。
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const nonce = params.get("eligibilityNonce");
+    const eligible = params.get("eligible");
+    const returnedSlotId = params.get("slotId");
+    if (!nonce) return;
+    setEligibility(eligible === "1" ? { status: "confirmed", nonce } : { status: "denied" });
+    if (returnedSlotId) setSlotId(returnedSlotId);
+    const a = Number(params.get("adultCount"));
+    const c = Number(params.get("childCount"));
+    const i = Number(params.get("infantCount"));
+    if (Number.isInteger(a) && a >= 1) setAdult(a);
+    if (Number.isInteger(c) && c >= 0) setChild(c);
+    if (Number.isInteger(i) && i >= 0) setInfant(i);
+    setStep(3);
+    window.history.replaceState(null, "", window.location.pathname);
+  }, []);
+
+  async function startEligibilityClaim() {
+    if (!slotId) return;
+    setEligibility({ status: "pending" });
+    try {
+      const response = await fetch("/api/farm/eligibility/start", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ slotId, adultCount: adult, childCount: child, infantCount: infant }),
+      });
+      const result = await response.json() as { orbitRedirectUrl?: string; error?: string };
+      if (!response.ok || !result.orbitRedirectUrl) {
+        setEligibility({ status: "denied" });
+        return;
+      }
+      window.location.href = result.orbitRedirectUrl;
+    } catch {
+      setEligibility({ status: "denied" });
+    }
+  }
 
   useEffect(() => {
     const controller = new AbortController();
@@ -217,6 +269,7 @@ export default function FarmBookingApp({ initialView = "booking" }: { initialVie
           groupName,
           note,
           idempotencyKey: idempotencyKey.current,
+          ...(eligibility.status === "confirmed" ? { eligibilityNonce: eligibility.nonce } : {}),
         }),
       });
       const result = await response.json() as { booking?: BookingRecord; error?: string; message?: string };
@@ -355,6 +408,18 @@ export default function FarmBookingApp({ initialView = "booking" }: { initialVie
                   <label>手機號碼<input value={phone} onChange={(event) => setPhone(event.target.value)} inputMode="tel" placeholder="0912 345 678" /><small className={phone && !validPhone ? "field-error" : ""}>{phone && !validPhone ? "請輸入正確的台灣手機號碼" : "用於預約與異動聯繫"}</small></label>
                   <label className="full">團體名稱（選填）<input value={groupName} onChange={(event) => setGroupName(event.target.value)} placeholder="家庭、公司或社團名稱" /></label>
                   <label className="full">備註<textarea value={note} onChange={(event) => setNote(event.target.value)} placeholder="行動協助、孩童或其他需要農場先知道的事" /></label>
+                </div>
+                <h3 className="field-title">企業認養客戶／受邀免費參訪</h3>
+                <div className="eligibility-block">
+                  {eligibility.status === "none" && (
+                    <>
+                      <p className="section-help compact">若您是威果企業認養客戶，或收到 Clement 的特別邀請連結，可登入 WeGrow Orbit 驗證免費參訪資格（不影響一般付費預約，不驗證就維持上方門票計價）。</p>
+                      <button type="button" className="secondary-button" onClick={startEligibilityClaim}><ShieldCheck /> 登入驗證免費參訪資格</button>
+                    </>
+                  )}
+                  {eligibility.status === "pending" && <div className="loading-state"><LoaderCircle /> 正在前往 WeGrow Orbit 登入…</div>}
+                  {eligibility.status === "confirmed" && <div className="blocked-result success-result"><Check /><div><strong>已確認免費參訪資格</strong><p>這次參訪將不收取門票費用。</p></div></div>}
+                  {eligibility.status === "denied" && <div className="blocked-result"><ShieldCheck /><div><strong>免費參訪資格驗證未通過</strong><p>可改用一般付費預約，或聯繫威果官方 LINE 確認邀請或合約範圍。</p></div></div>}
                 </div>
                 <h3 className="field-title">付款方式（尚未開放）</h3>
                 <div className="payment-options">

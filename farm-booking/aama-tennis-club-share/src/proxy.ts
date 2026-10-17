@@ -3,6 +3,10 @@ import { NextResponse, type NextRequest } from "next/server";
 const PUBLIC_PREFIXES = [
   "/login", "/api/auth", "/api/farm/availability", "/api/farm/bookings", "/api/farm/checkout",
   "/api/bookings", "/booking", "/my-bookings", "/visit-info", "/contact",
+  // 免費參訪資格的nonce交換起點（2026-10-17）：客戶可能根本沒有farm-booking的
+  // LINE session（一般訪客想查認養資格），這支路由本身不需要farm-booking端的
+  // 登入——真正的身分核對在Orbit那端的真實帳密登入，不是這裡的tc_session cookie。
+  "/api/farm/eligibility",
   "/_next", "/brand", "/favicon",
   // Server-to-server job endpoints authenticate themselves via their own
   // JOB_SECRET bearer-token check (timing-safe compare) — they must never

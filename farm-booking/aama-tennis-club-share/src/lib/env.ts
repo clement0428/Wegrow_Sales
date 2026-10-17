@@ -27,4 +27,8 @@ export const env = {
   // 誤判成一般付費訂單（見adoption-eligibility.ts）。
   get FARM_BOOKING_ELIGIBILITY_SECRET(): string | undefined { return process.env.FARM_BOOKING_ELIGIBILITY_SECRET || undefined; },
   get ORBIT_API_BASE_URL(): string | undefined { return process.env.ORBIT_API_BASE_URL || "https://api.wegrow-orbit.com"; },
+  // 客戶瀏覽器端要導向的Orbit企業認養入口頁面（不是service-to-service API base），
+  // 客戶在這裡用真實帳密登入後，由該頁面前端呼叫claim API——跟上面的ORBIT_API_
+  // BASE_URL是兩個不同用途的URL，不能共用。
+  get ORBIT_CUSTOMER_PORTAL_URL(): string { return process.env.ORBIT_CUSTOMER_PORTAL_URL || "https://wegrow-orbit.com/sol-wegrow-farm/farm-portal.html"; },
 };
