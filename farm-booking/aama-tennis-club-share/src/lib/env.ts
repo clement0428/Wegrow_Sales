@@ -22,4 +22,9 @@ export const env = {
   // webhook一律401、工作卡一律不發送——不是故障，是安全預設。
   get LINE_MESSAGING_CHANNEL_SECRET(): string | undefined { return process.env.LINE_MESSAGING_CHANNEL_SECRET || undefined; },
   get MADOU_GROUP_ID(): string | undefined { return process.env.MADOU_GROUP_ID || undefined; },
+  // 認養資格查詢（wegrow-orbit-src，另一個repo/身分系統）——service-to-service
+  // bearer secret，未設定前一律回報"not_configured"，免費參訪路徑直接拒絕，不會
+  // 誤判成一般付費訂單（見adoption-eligibility.ts）。
+  get FARM_BOOKING_ELIGIBILITY_SECRET(): string | undefined { return process.env.FARM_BOOKING_ELIGIBILITY_SECRET || undefined; },
+  get ORBIT_API_BASE_URL(): string | undefined { return process.env.ORBIT_API_BASE_URL || "https://api.wegrow-orbit.com"; },
 };
