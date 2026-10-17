@@ -16,6 +16,10 @@ const PUBLIC_PREFIXES = [
   // route itself. Caught this by actually curling the endpoint locally; it
   // was 307-redirecting to /login before ever reaching the signature check.
   "/api/line/webhook",
+  // TEMPORARY diagnostic, no session either (see src/app/api/line/bot-identity/route.ts
+  // comment) — remove this line and the route together once the channel-identity
+  // question is answered.
+  "/api/line/bot-identity",
 ];
 
 export function proxy(req: NextRequest) {

@@ -73,15 +73,28 @@ export async function processMadouPostbackAction(
     return { replyText: booking ? composePrepDetailText(booking) : "找不到這筆預約。" };
   }
 
-  // report_issue — id derived from eventId (not a random newId()) + INSERT OR
-  // IGNORE makes a retried/duplicate-processed event a safe no-op instead of
-  // a second audit-log row for the same real-world report.
+  // report_issue — audit_log keeps the general action trail (same convention
+  // as every other state transition in this codebase); farm_booking_issues
+  // is the actual visible to-do staff see in the admin backend, since
+  // review correctly pointed out audit_log alone means nobody ever sees
+  // the report unless they go digging in raw logs. Both ids are derived
+  // from eventId (not a random newId()) + INSERT OR IGNORE, so a
+  // retried/duplicate-processed event never creates a second ticket for
+  // the same real-world report.
+  const nowIso = new Date().toISOString();
   await db
     .prepare(
       `INSERT OR IGNORE INTO farm_audit_log (id, entity_type, entity_id, actor_type, actor_id, action, from_state, to_state, reason, created_at)
        VALUES (?, 'farm_booking', ?, 'line_webhook', ?, 'report_issue', NULL, NULL, '現場透過麻豆群回報問題', ?)`,
     )
-    .bind(`madou-report-${eventId}`, bookingId, member.id, new Date().toISOString())
+    .bind(`madou-report-${eventId}`, bookingId, member.id, nowIso)
+    .run();
+  await db
+    .prepare(
+      `INSERT OR IGNORE INTO farm_booking_issues (id, booking_id, reported_by_member_id, note, status, created_at)
+       VALUES (?, ?, ?, '現場透過麻豆群回報問題', 'open', ?)`,
+    )
+    .bind(`madou-issue-${eventId}`, bookingId, member.id, nowIso)
     .run();
   return { replyText: "已記錄，將由管理員確認處理。" };
 }

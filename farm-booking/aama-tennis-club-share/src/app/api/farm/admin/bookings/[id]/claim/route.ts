@@ -9,14 +9,27 @@ const bodySchema = z.object({ visitVersion: z.number().int().optional() });
 // 共用給這支authenticated端點與麻豆群webhook的postback（見claim.ts）。
 //
 // visitVersion是可選的：目前管理後台還沒有任何畫面顯示/傳送這個值（還沒有admin
-// UI的接單按鈕），所以省略時行為不變（不檢查版本）。一旦前端加上顯示版本的接單
-// 按鈕，傳了這個值就會被強制比對，跟webhook那一側的檢查邏輯一致——不是等UI做完
-// 才補後端，後端先準備好。
+// UI的接單按鈕），所以完全省略這個欄位時行為不變（不檢查版本）。一旦前端加上顯示
+// 版本的接單按鈕，傳了這個值就會被強制比對，跟webhook那一側的檢查邏輯一致——不是
+// 等UI做完才補後端，後端先準備好。
+//
+// 但「省略」跟「傳了卻格式錯誤」必須分開處理：原本safeParse失敗一律回退成
+// undefined，會讓一個畫錯的版本號（字串、小數、負數）被錯誤當成「沒傳」而跳過
+// 檢查——這正好是版本檢查原本要防的事。body裡確實帶著visitVersion這個key但解析
+// 失敗，必須直接400，不能靜默放行。
 export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
   const member = await requireStaff();
   if (!canClaimBooking(member)) return Response.json({ error: "此角色無法接單" }, { status: 403 });
   const { id } = await params;
-  const parsed = bodySchema.safeParse(await request.json().catch(() => ({})));
+  const rawBody = await request.json().catch(() => ({}));
+  const parsed = bodySchema.safeParse(rawBody);
+  if (!parsed.success) {
+    if (rawBody && typeof rawBody === "object" && "visitVersion" in rawBody) {
+      return Response.json({ error: "visitVersion 格式錯誤，必須是整數" }, { status: 400 });
+    }
+    // Body itself was malformed JSON, or an object with no visitVersion key
+    // at all — legitimate omission, not a bad version value.
+  }
   const visitVersion = parsed.success ? parsed.data.visitVersion : undefined;
 
   const db = await getDb();

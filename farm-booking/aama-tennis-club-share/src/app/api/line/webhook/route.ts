@@ -1,6 +1,6 @@
 import { getDb } from "@/lib/db/client";
 import { env } from "@/lib/env";
-import { queueMadouWebhookResult } from "@/lib/line/madou-group-queue";
+import { buildQueueMadouWebhookResultStatement } from "@/lib/line/madou-group-queue";
 import { processMadouPostbackAction, type MadouPostbackAction } from "@/lib/line/madou-webhook-process";
 import { sendLineReplyMessage } from "@/lib/line/messaging";
 import { verifyLineWebhookSignature } from "@/lib/line/webhook-signature";
@@ -89,7 +89,6 @@ export async function POST(request: Request) {
     try {
       const result = await processMadouPostbackAction(db, action as MadouPostbackAction, bookingId, expectedVisitVersion, member, eventId);
       replyText = result.replyText;
-      await db.prepare("UPDATE farm_line_webhook_events SET status = 'processed', leased_until = NULL, updated_at = ? WHERE id = ?").bind(new Date().toISOString(), eventId).run();
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       const now2 = new Date().toISOString();
@@ -101,20 +100,24 @@ export async function POST(request: Request) {
         .bind(message, now2, now2, eventId)
         .run();
       console.error("madou webhook event failed, queued for retry", error);
+      handled += 1;
+      continue;
     }
 
-    if (replyText) {
-      const replied = accessToken && event.replyToken
-        ? await sendLineReplyMessage(accessToken, event.replyToken, [{ type: "text", text: replyText }])
-        : { ok: false as const, status: 0, error: "no_access_token_or_reply_token" };
-      // The business action already committed above regardless of this
-      // result — this is purely "did the human get told." If the reply
-      // failed (expired token, network blip, no credentials yet), queue a
-      // durable fallback instead of just losing the acknowledgement; the
-      // existing outbox retry loop in jobs/madou-group/route.ts drains it
-      // with its normal backoff.
-      if (!replied.ok) await queueMadouWebhookResult(db, eventId, replyText);
-    }
+    // The LINE reply is network I/O and can't itself be part of a DB
+    // transaction — but "mark this event processed" and "if the reply
+    // failed, durably queue a fallback" must land together or not at all.
+    // Doing them as two independent awaits left a real crash window: a kill
+    // between them marked the event 'processed' forever with the human ack
+    // lost. db.batch() commits both statements as one D1 transaction.
+    const replied = accessToken && event.replyToken
+      ? await sendLineReplyMessage(accessToken, event.replyToken, [{ type: "text", text: replyText }])
+      : { ok: false as const, status: 0, error: "no_access_token_or_reply_token" };
+    const markProcessed = db
+      .prepare("UPDATE farm_line_webhook_events SET status = 'processed', leased_until = NULL, updated_at = ? WHERE id = ?")
+      .bind(new Date().toISOString(), eventId);
+    const statements = replied.ok ? [markProcessed] : [markProcessed, buildQueueMadouWebhookResultStatement(db, eventId, replyText)];
+    await db.batch(statements);
     handled += 1;
   }
 

@@ -42,19 +42,34 @@ export async function queueMadouWorkCard(db: D1Database, visitVersion: number, s
 // token, or a retry-worker group push) fails to deliver, that must not be
 // silently lost: queue it into the same durable, already-retried outbox the
 // job route drains, keyed by eventId so calling this twice for the same
-// event is a no-op. Found by review: the previous version fired-and-forgot
-// both the sync reply and the retry-path's delayed push, discarding whatever
-// SendResult came back.
-export async function queueMadouWebhookResult(db: D1Database, eventId: string, text: string): Promise<void> {
+// event is a no-op.
+//
+// Returns a PREPARED (not yet executed) statement rather than running it,
+// so the caller can put it in the same db.batch([...]) as the
+// farm_line_webhook_events "mark processed" UPDATE. Found by review (round
+// 2): marking an event 'processed' and then separately queuing the result
+// as two independent awaits left a real crash window — a kill between them
+// left the event permanently 'processed' (never retried) with the human
+// ack lost forever. db.batch() commits both statements as a single D1
+// transaction: either both land or neither does, so a crash mid-way leaves
+// the event 'queued' for the retry worker to safely redo (idempotent either
+// way — see processMadouPostbackAction).
+export function buildQueueMadouWebhookResultStatement(db: D1Database, eventId: string, text: string): D1PreparedStatement {
   const now = new Date().toISOString();
-  await db
+  return db
     .prepare(
       `INSERT OR IGNORE INTO farm_notification_outbox
        (id, booking_id, channel, notification_type, recipient_id, content_snapshot_json, retry_key, status, attempt_count, scheduled_at, next_attempt_at, created_at)
        VALUES (?, NULL, 'line_group', 'madou_webhook_result', ?, ?, ?, 'queued', 0, ?, ?, ?)`,
     )
-    .bind(newId(), MADOU_GROUP_RECIPIENT_ID, JSON.stringify({ text }), `madou:webhook-result:${eventId}`, now, now, now)
-    .run();
+    .bind(newId(), MADOU_GROUP_RECIPIENT_ID, JSON.stringify({ text }), `madou:webhook-result:${eventId}`, now, now, now);
+}
+
+// Convenience wrapper for call sites that don't need batched atomicity
+// (none currently — kept so a future simple caller doesn't have to know
+// about the batch-statement variant).
+export async function queueMadouWebhookResult(db: D1Database, eventId: string, text: string): Promise<void> {
+  await buildQueueMadouWebhookResultStatement(db, eventId, text).run();
 }
 
 type TomorrowBookingRow = {

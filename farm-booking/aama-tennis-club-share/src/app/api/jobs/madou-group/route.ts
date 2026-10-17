@@ -5,7 +5,7 @@ import { classifyLineError } from "@/lib/line/error-classification";
 import {
   composeWorkCardCancelledText, composeWorkCardMessage, composeWorkCardRescheduledMessage,
 } from "@/lib/line/madou-group-text";
-import { queueDailyDigestIfDue, queueMadouWebhookResult, type MadouWorkCardSnapshot } from "@/lib/line/madou-group-queue";
+import { buildQueueMadouWebhookResultStatement, queueDailyDigestIfDue, type MadouWorkCardSnapshot } from "@/lib/line/madou-group-queue";
 import { MAX_SEND_ATTEMPTS, nextAttemptDelayMinutes, sendLinePushMessage, type LineMessage } from "@/lib/line/messaging";
 import { processMadouPostbackAction, type MadouPostbackAction } from "@/lib/line/madou-webhook-process";
 import { isSupersededWorkCard, type CurrentBookingState } from "@/lib/farm/madou-work-card-staleness";
@@ -98,13 +98,16 @@ export async function POST(request: Request) {
     }
     try {
       const result = await processMadouPostbackAction(db, row.action as MadouPostbackAction, row.booking_id, row.visit_version_param, member, row.id);
-      await db.prepare("UPDATE farm_line_webhook_events SET status = 'processed', leased_until = NULL, updated_at = ? WHERE id = ?").bind(nowIso2, row.id).run();
+      // Mark processed AND enqueue the delayed result as one atomic D1
+      // batch — the original reply token is long expired by retry time, so
+      // queuing a durable push is the only delivery path here, and it must
+      // not be possible for a crash to leave the event 'processed' with the
+      // result silently dropped (same bug class as the sync path above).
+      await db.batch([
+        db.prepare("UPDATE farm_line_webhook_events SET status = 'processed', leased_until = NULL, updated_at = ? WHERE id = ?").bind(nowIso2, row.id),
+        buildQueueMadouWebhookResultStatement(db, row.id, `[延遲處理] ${result.replyText}`),
+      ]);
       webhookRetried += 1;
-      // The original reply token is long expired by retry time (LINE expects
-      // a reply within seconds) — queue the delayed result into the same
-      // durable outbox the loop below already drains with full backoff,
-      // rather than a bare fire-and-forget push whose result nobody checked.
-      await queueMadouWebhookResult(db, row.id, `[延遲處理] ${result.replyText}`);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       const attemptsAfter = row.attempt_count + 1;
