@@ -1,3 +1,4 @@
+import { cookies } from "next/headers";
 import { z } from "zod";
 import { getDb } from "@/lib/db/client";
 import { newId } from "@/lib/db/uuid";
@@ -7,9 +8,18 @@ import { getCurrentMember } from "@/lib/auth/current-member";
 import { isAllowedBookingSlot, ticketRateBpsForSlot } from "@/lib/farm/visit-policy";
 import { queueSalesSyncEvent } from "@/lib/sales/queue";
 import { redeemAdoptionEligibilityNonce } from "@/lib/farm/adoption-eligibility";
-import { checkEligibilitySession, markEligibilitySessionUsed } from "@/lib/farm/eligibility-session";
+import { ELIGIBILITY_SESSION_COOKIE, checkEligibilitySession, markEligibilitySessionUsed } from "@/lib/farm/eligibility-session";
 import { taipeiDateIso } from "@/lib/farm/taipei-date";
 import { queueMadouWorkCard } from "@/lib/line/madou-group-queue";
+
+// Orbit那端回的reason要分成兩類給客戶看：一類是「這次驗證session本身失效了」
+// （過期、被用過、日期對不上、根本找不到）——這些都該導回「請重新驗證」而不是
+// 「你不符合資格」，因為這跟客戶真實的認養身分無關，只是token的時效/狀態問題；
+// 另一類才是核對過真實身分跟合約後「確實不符合」。系統性故障（503）又是第三類，
+// 不能跟任一類混在一起說成「資格未通過」。
+const STALE_ELIGIBILITY_REASONS = new Set([
+  "nonce_not_found", "nonce_expired", "nonce_already_consumed", "visit_date_mismatch",
+]);
 
 const createSchema = z.object({
   slotId: z.string().min(1).max(100),
@@ -88,9 +98,20 @@ export async function POST(request: Request) {
 
   // 認養客戶免費參訪（2026-10-17修正：nonce交換取代email自填）：只在客戶帶著
   // eligibilityNonce送出時才核對資格——省略這個欄位完全不影響既有付費/人工確認
-  // 流程。資格核對以「所選參訪日期」為準，不是以今天為準；查不到資格、nonce已
-  // 過期/用過、或服務本身打不通，一律不自動轉收費，直接拒絕這次送出並清楚告知
-  // 原因，交由Clement邀請／人工確認處理，不悄悄當成一般付費訂單。
+  // 流程。資格核對以「所選參訪日期」為準，不是以今天為準。
+  //
+  // 2026-10-17二次修正：
+  // (a) session binding——nonce要連同HttpOnly cookie一起驗證，跨瀏覽器/只拿到
+  //     URL裡的nonce字串兌換不了。
+  // (b) redemptionId直接重用idempotencyKey——這支handler本來就把它當成「同一次
+  //     booking建立嘗試」的身分，Orbit跟本機這一層的資格使用狀態都用同一把key
+  //     判斷是不是retry，不是重新核發也不是永久拒絕。
+  // (c) used_at延後到booking INSERT真正成功之後才標記（往下看），不是redeem
+  //     成功就馬上標記——否則booking建立失敗時retry會被這裡的「已使用」擋死，
+  //     即使Orbit那端已經正確允許同一個redemptionId重試。
+  // (d) 區分「驗證session本身失效」(reason屬於STALE_ELIGIBILITY_REASONS，應該
+  //     導回重新驗證)、「服務打不通」(503)、「核對過真的不符合資格」三種，不能
+  //     混在同一句「資格未通過」裡。
   let isAdoptionFreeVisit = false;
   let adoptionSourceOrganizationId: string | null = null;
   let adoptionSourceContractId: string | null = null;
@@ -99,25 +120,39 @@ export async function POST(request: Request) {
       return Response.json({ error: "認養客戶免費參訪暫不支援加購植栽或餐飲，如有需求請聯絡現場協助安排。" }, { status: 400 });
     }
     const visitDateIso = taipeiDateIso(slot.starts_at);
-    const localSession = await checkEligibilitySession(db, input.eligibilityNonce, visitDateIso);
-    if (!localSession.ok) {
-      return Response.json({
-        error: "免費參訪資格驗證已過期或已使用，請重新登入認養企業帳號再試一次。",
-        code: `eligibility_session_${localSession.reason}`,
-      }, { status: 403 });
+    const redemptionId = input.idempotencyKey;
+    const sessionToken = (await cookies()).get(ELIGIBILITY_SESSION_COOKIE)?.value ?? null;
+
+    let localSession;
+    try {
+      localSession = await checkEligibilitySession(db, input.eligibilityNonce, visitDateIso, sessionToken, redemptionId);
+    } catch {
+      return Response.json({ error: "免費資格驗證暫時無法使用，請改用一般付費預約，或聯絡威果官方 LINE 協助確認。", code: "eligibility_feature_unavailable" }, { status: 503 });
     }
-    const eligibility = await redeemAdoptionEligibilityNonce(input.eligibilityNonce, visitDateIso);
+    if (!localSession.ok) {
+      const message = localSession.reason === "session_mismatch"
+        ? "請在同一個瀏覽器完成免費參訪資格驗證，再送出這筆預約。"
+        : "免費參訪資格驗證已過期或已使用，請重新登入認養企業帳號再驗證一次。";
+      return Response.json({ error: message, code: `eligibility_session_${localSession.reason}` }, { status: 403 });
+    }
+
+    const eligibility = await redeemAdoptionEligibilityNonce(input.eligibilityNonce, visitDateIso, redemptionId);
     if (!eligibility.ok) {
       return Response.json({ error: "認養資格查詢服務暫時無法使用，請稍後再試，或聯絡客服協助確認。", code: "eligibility_service_unavailable" }, { status: 503 });
     }
     if (!eligibility.eligible) {
+      if (STALE_ELIGIBILITY_REASONS.has(eligibility.reason)) {
+        return Response.json({
+          error: "免費參訪資格驗證已過期或已使用，請重新登入認養企業帳號再驗證一次。",
+          code: "eligibility_session_stale", reason: eligibility.reason,
+        }, { status: 403 });
+      }
       return Response.json({
-        error: "這個資格驗證目前不符合所選參訪日期的認養免費資格，如需協助請聯絡威果確認邀請或合約範圍。",
+        error: "核對後這個帳號目前不符合所選參訪日期的認養免費資格，如需協助請聯絡威果確認邀請或合約範圍。",
         code: "not_eligible_for_free_visit",
         reason: eligibility.reason,
       }, { status: 403 });
     }
-    await markEligibilitySessionUsed(db, input.eligibilityNonce);
     isAdoptionFreeVisit = true;
     adoptionSourceOrganizationId = eligibility.sourceOrganizationId;
     adoptionSourceContractId = eligibility.sourceContractId;
@@ -148,7 +183,9 @@ export async function POST(request: Request) {
   });
 
   // A single conditional INSERT keeps capacity checking and reservation creation atomic in D1.
-  const result = await db.prepare(`
+  let result;
+  try {
+    result = await db.prepare(`
     INSERT INTO farm_bookings (
       id, booking_number, lookup_code, slot_id, customer_member_id, contact_name, contact_phone, group_name,
       adult_count, child_count, infant_count, total_people, plant_count, meal_count, vegetarian_meal_count,
@@ -206,12 +243,39 @@ export async function POST(request: Request) {
     ticketSnapshot, input.idempotencyKey, now, now, input.slotId,
     now, now, now, now, totalPeople, now,
   ).run();
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    // idempotency_key是UNIQUE——雙擊/並發重送撞到同一把key時，D1會丟這個約束
+    // 違反錯誤，不是真正的系統錯誤。這是我們自己的約束正確擋下重複INSERT，補一次
+    // 跟頂部一樣的擁有者核對再回傳既有預約，而不是讓它變成未處理的500。
+    if (message.includes("UNIQUE constraint failed") && message.includes("idempotency_key")) {
+      const dup = await db.prepare(
+        "SELECT contact_phone, lookup_code, customer_member_id FROM farm_bookings WHERE idempotency_key = ?",
+      ).bind(input.idempotencyKey).first<{ contact_phone: string; lookup_code: string; customer_member_id: string | null }>();
+      if (dup) {
+        if (dup.customer_member_id !== (member?.id ?? null)) {
+          return Response.json({ error: "這個預約代碼無法驗證擁有者，請重新送出預約。", code: "idempotency_owner_mismatch" }, { status: 409 });
+        }
+        if (input.eligibilityNonce) await markEligibilitySessionUsed(db, input.eligibilityNonce, input.idempotencyKey).catch(() => {});
+        const existingBooking = await findBooking(dup.contact_phone, dup.lookup_code);
+        return Response.json({ booking: existingBooking, duplicate: true });
+      }
+    }
+    throw error;
+  }
 
   if (!result.meta.changes) {
     return Response.json({
       error: "這個時段的名額剛被其他預約使用，請重新選擇場次。",
       code: "capacity_changed",
     }, { status: 409 });
+  }
+
+  // 免費資格要在booking真正建立成功之後才標記成「已使用」（見checkEligibilitySession/
+  // markEligibilitySessionUsed的註解）——redeem成功但這裡capacity_changed/上面
+  // 例外失敗的話，不會卡死這個nonce，同一個idempotencyKey retry還能正常走一次。
+  if (isAdoptionFreeVisit && input.eligibilityNonce) {
+    await markEligibilitySessionUsed(db, input.eligibilityNonce, input.idempotencyKey);
   }
 
   await queueSalesSyncEvent(db, id, "booking_created");

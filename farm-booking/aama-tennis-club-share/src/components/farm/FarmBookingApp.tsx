@@ -47,15 +47,49 @@ type CheckoutState =
   | { status: "blocked"; message: string }
   | { status: "reserved"; bookingNumber: string; lookupCode: string; message: string; statusBucket: StatusBucket };
 
-// 認養企業客戶／Clement特別邀請的免費參訪資格（2026-10-17）：nonce只在Orbit用
-// 真實帳密核發eligible之後、瀏覽器被導回來時才會進入"confirmed"——"confirmed"
-// 只是前端UX狀態，真正能不能免費仍由後端在送出預約時再跟Orbit兌換一次nonce
-// 決定，前端這個狀態不是信任邊界。
+// 認養企業客戶的免費參訪資格（2026-10-17；Clement特別邀請連結尚未上線，這裡
+// 先只服務認養客戶）：nonce只在Orbit用真實帳密核發eligible之後、瀏覽器被導回來
+// 時才會進入"confirmed"——"confirmed"只是前端UX狀態，真正能不能免費仍由後端
+// 在送出預約時再跟Orbit兌換一次nonce決定，前端這個狀態不是信任邊界。
+//
+// 2026-10-17二次修正：原本只有"denied"一種失敗狀態，把「服務本身故障」「驗證
+// session過期/跨瀏覽器失效」「核對過真的不符合資格」三種完全不同的情況混在一起
+// ——系統故障不能顯示成「你的資格未通過」。
 type EligibilityState =
   | { status: "none" }
   | { status: "pending" }
-  | { status: "confirmed"; nonce: string }
-  | { status: "denied" };
+  | { status: "confirmed"; nonce: string; expiresAt: string }
+  | { status: "unavailable" } // 服務本身打不通/暫時無法使用（含migration未完成）
+  | { status: "stale" } // 驗證session過期、已用過、或跨瀏覽器/重新整理後失效
+  | { status: "not_eligible" }; // 核對過真實登入身分跟合約後，確實不符合資格
+
+const ELIGIBILITY_STORAGE_KEY = "tc-eligibility-state";
+
+function persistEligibility(state: EligibilityState) {
+  try {
+    if (state.status === "confirmed") sessionStorage.setItem(ELIGIBILITY_STORAGE_KEY, JSON.stringify(state));
+    else sessionStorage.removeItem(ELIGIBILITY_STORAGE_KEY);
+  } catch { /* sessionStorage不可用（隱私模式等）就放棄持久化，不影響本次流程 */ }
+}
+
+// 回跳與重新整理不能無提示丟失已確認的免費資格——React state在整頁重新整理後
+// 會清空，這裡用sessionStorage補回來；如果存的是已經過期的nonce，回傳"stale"而
+// 不是靜默當作"none"，讓畫面能明確告知「先前的驗證已過期，需要重新驗證」。
+function restoreEligibility(): EligibilityState | null {
+  try {
+    const raw = sessionStorage.getItem(ELIGIBILITY_STORAGE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as EligibilityState;
+    if (parsed.status !== "confirmed") return null;
+    if (new Date(parsed.expiresAt).getTime() <= Date.now()) {
+      sessionStorage.removeItem(ELIGIBILITY_STORAGE_KEY);
+      return { status: "stale" };
+    }
+    return parsed;
+  } catch {
+    return null;
+  }
+}
 
 type BookingRecord = {
   bookingNumber: string;
@@ -152,16 +186,33 @@ export default function FarmBookingApp({ initialView = "booking" }: { initialVie
     }
   }, [lineIdentity.status]);
 
-  // 客戶從Orbit登入頁被導回來：URL帶eligibilityNonce+eligible（純UX提示，不是
-  // 信任邊界——真正核對在submitBooking()送出時由後端跟Orbit再兌換一次）。讀完
-  // 立刻清掉URL參數，避免重新整理頁面時重複觸發或留在瀏覽紀錄裡。
+  // 客戶從Orbit登入頁被導回來：URL帶eligibilityNonce+eligible+eligibilityExpiresAt
+  // （純UX提示，不是信任邊界——真正核對在submitBooking()送出時由後端跟Orbit再
+  // 兌換一次）。讀完立刻清掉URL參數，避免重新整理頁面時重複觸發或留在瀏覽紀錄裡。
+  // eligible=1→確認免費；eligible=0→claim核對過真的不符合資格；eligible=error→
+  // 服務本身打不通，不能顯示成「資格未通過」（見farm-portal.html的對應修正）。
+  // 如果不是從Orbit導回來的，改檢查sessionStorage有沒有先前確認過還沒過期的
+  // 資格——重新整理頁面不該無提示把已確認的免費資格弄丟。
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const nonce = params.get("eligibilityNonce");
+    if (!nonce) {
+      const restored = restoreEligibility();
+      if (restored) setEligibility(restored);
+      return;
+    }
     const eligible = params.get("eligible");
+    const expiresAt = params.get("eligibilityExpiresAt");
     const returnedSlotId = params.get("slotId");
-    if (!nonce) return;
-    setEligibility(eligible === "1" ? { status: "confirmed", nonce } : { status: "denied" });
+    if (eligible === "1" && expiresAt) {
+      const confirmed: EligibilityState = { status: "confirmed", nonce, expiresAt };
+      setEligibility(confirmed);
+      persistEligibility(confirmed);
+    } else if (eligible === "error") {
+      setEligibility({ status: "unavailable" });
+    } else {
+      setEligibility({ status: "not_eligible" });
+    }
     if (returnedSlotId) setSlotId(returnedSlotId);
     const a = Number(params.get("adultCount"));
     const c = Number(params.get("childCount"));
@@ -182,14 +233,14 @@ export default function FarmBookingApp({ initialView = "booking" }: { initialVie
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ slotId, adultCount: adult, childCount: child, infantCount: infant }),
       });
-      const result = await response.json() as { orbitRedirectUrl?: string; error?: string };
+      const result = await response.json() as { orbitRedirectUrl?: string; error?: string; code?: string };
       if (!response.ok || !result.orbitRedirectUrl) {
-        setEligibility({ status: "denied" });
+        setEligibility(response.status === 503 || result.code === "eligibility_feature_unavailable" ? { status: "unavailable" } : { status: "not_eligible" });
         return;
       }
       window.location.href = result.orbitRedirectUrl;
     } catch {
-      setEligibility({ status: "denied" });
+      setEligibility({ status: "unavailable" });
     }
   }
 
@@ -227,6 +278,9 @@ export default function FarmBookingApp({ initialView = "booking" }: { initialVie
   const ticketRateBps = selectedSlot?.ticketRateBps ?? 10_000;
   const price = calculateVisitPrice({ people, plantCount, mealCount, ticketRateBps });
   const validPhone = /^09\d{8}$/.test(phone.replace(/\D/g, ""));
+  // 免費成立後要把票價、付款區、付費加購都藏起來——這幾項金額本來就會被後端
+  // 強制清成0，畫面卻還留著門票單價/付款選項會讓客戶誤以為仍要付款或可以加購。
+  const isFreeConfirmed = eligibility.status === "confirmed";
 
   function changeCount(kind: "adult" | "child" | "infant", delta: number) {
     const values = { adult, child, infant };
@@ -272,8 +326,21 @@ export default function FarmBookingApp({ initialView = "booking" }: { initialVie
           ...(eligibility.status === "confirmed" ? { eligibilityNonce: eligibility.nonce } : {}),
         }),
       });
-      const result = await response.json() as { booking?: BookingRecord; error?: string; message?: string };
+      const result = await response.json() as { booking?: BookingRecord; error?: string; message?: string; code?: string };
       if (!response.ok || !result.booking) {
+        // 送出時後端又重新核對了一次資格（這才是真正的信任邊界）——如果這次核對
+        // 翻盤，要把前端的"confirmed"狀態跟著更新掉並清除sessionStorage持久化，
+        // 不能讓畫面繼續顯示「已確認免費」卻送不出去。
+        if (result.code === "eligibility_feature_unavailable" || result.code === "eligibility_service_unavailable") {
+          const next: EligibilityState = { status: "unavailable" };
+          setEligibility(next); persistEligibility(next);
+        } else if (result.code?.startsWith("eligibility_session_")) {
+          const next: EligibilityState = { status: "stale" };
+          setEligibility(next); persistEligibility(next);
+        } else if (result.code === "not_eligible_for_free_visit") {
+          const next: EligibilityState = { status: "not_eligible" };
+          setEligibility(next); persistEligibility(next);
+        }
         setCheckout({ status: "blocked", message: result.error || "無法建立預約，請重新確認場次。" });
         return;
       }
@@ -325,27 +392,33 @@ export default function FarmBookingApp({ initialView = "booking" }: { initialVie
             {step === 1 && (
               <>
                 <SectionHeading kicker="STEP 1" title="選擇這次的參訪內容" icon={<Sprout />} />
-                <div className="ticket-card">
-                  <span><Ticket /></span>
-                  <div><strong>農場門票與導覽</strong><p>平日 NT$ {TICKET_PRICE_TWD}／人；假日時段 NT$ 360／人。門票金額可折抵參訪當日現場選購。</p></div>
-                  <b>必選</b>
-                </div>
-                <h3 className="field-title">加選體驗</h3>
-                <p className="section-help compact">先選數量，系統會把門票折抵金自動套用到本次選購。</p>
-                <div className="counter-list addon-list">
-                  <Counter label="盆栽手作" note={`NT$ ${PLANT_PRICE_TWD}／盆`} value={plantCount} onMinus={() => setPlantCount(Math.max(0, plantCount - 1))} onPlus={() => setPlantCount(Math.min(people, plantCount + 1))} />
-                  <Counter label="現場餐飲" note={`NT$ ${MEAL_PRICE_TWD}／人`} value={mealCount} onMinus={() => { const next = Math.max(0, mealCount - 1); setMealCount(next); setVegetarianMealCount((v) => Math.min(v, next)); }} onPlus={() => setMealCount(Math.min(people, mealCount + 1))} />
-                  {mealCount > 0 && (
-                    <Counter label="其中素食份數" note="葷食份數 = 餐飲總份數 − 素食份數" value={vegetarianMealCount} onMinus={() => setVegetarianMealCount(Math.max(0, vegetarianMealCount - 1))} onPlus={() => setVegetarianMealCount(Math.min(mealCount, vegetarianMealCount + 1))} />
-                  )}
-                </div>
-                <div className="pricing-summary">
-                  <PriceLine label={`門票 ${people} 人`} value={price.ticketSubtotalTwd} />
-                  <PriceLine label="加選項目" value={price.addOnSubtotalTwd} />
-                  <PriceLine label="本次門票折抵" value={-price.creditAppliedTwd} highlight />
-                  <div className="pricing-total"><span>本次合計</span><strong>NT$ {price.totalTwd.toLocaleString()}</strong></div>
-                  {price.creditRemainingTwd > 0 && <small>尚有 NT$ {price.creditRemainingTwd.toLocaleString()} 可於參訪當日折抵現場商品。</small>}
-                </div>
+                {isFreeConfirmed ? (
+                  <div className="blocked-result success-result"><Check /><div><strong>已確認免費參訪資格</strong><p>這次參訪不收門票費用，也暫不支援加購植栽或餐飲。</p></div></div>
+                ) : (
+                  <>
+                    <div className="ticket-card">
+                      <span><Ticket /></span>
+                      <div><strong>農場門票與導覽</strong><p>平日 NT$ {TICKET_PRICE_TWD}／人；假日時段 NT$ 360／人。門票金額可折抵參訪當日現場選購。</p></div>
+                      <b>必選</b>
+                    </div>
+                    <h3 className="field-title">加選體驗</h3>
+                    <p className="section-help compact">先選數量，系統會把門票折抵金自動套用到本次選購。</p>
+                    <div className="counter-list addon-list">
+                      <Counter label="盆栽手作" note={`NT$ ${PLANT_PRICE_TWD}／盆`} value={plantCount} onMinus={() => setPlantCount(Math.max(0, plantCount - 1))} onPlus={() => setPlantCount(Math.min(people, plantCount + 1))} />
+                      <Counter label="現場餐飲" note={`NT$ ${MEAL_PRICE_TWD}／人`} value={mealCount} onMinus={() => { const next = Math.max(0, mealCount - 1); setMealCount(next); setVegetarianMealCount((v) => Math.min(v, next)); }} onPlus={() => setMealCount(Math.min(people, mealCount + 1))} />
+                      {mealCount > 0 && (
+                        <Counter label="其中素食份數" note="葷食份數 = 餐飲總份數 − 素食份數" value={vegetarianMealCount} onMinus={() => setVegetarianMealCount(Math.max(0, vegetarianMealCount - 1))} onPlus={() => setVegetarianMealCount(Math.min(mealCount, vegetarianMealCount + 1))} />
+                      )}
+                    </div>
+                    <div className="pricing-summary">
+                      <PriceLine label={`門票 ${people} 人`} value={price.ticketSubtotalTwd} />
+                      <PriceLine label="加選項目" value={price.addOnSubtotalTwd} />
+                      <PriceLine label="本次門票折抵" value={-price.creditAppliedTwd} highlight />
+                      <div className="pricing-total"><span>本次合計</span><strong>NT$ {price.totalTwd.toLocaleString()}</strong></div>
+                      {price.creditRemainingTwd > 0 && <small>尚有 NT$ {price.creditRemainingTwd.toLocaleString()} 可於參訪當日折抵現場商品。</small>}
+                    </div>
+                  </>
+                )}
                 <h3 className="field-title">來訪人數</h3>
                 <p className="section-help compact">成人、兒童與幼兒都會計入現場接待人數。</p>
                 <div className="counter-list">
@@ -409,23 +482,35 @@ export default function FarmBookingApp({ initialView = "booking" }: { initialVie
                   <label className="full">團體名稱（選填）<input value={groupName} onChange={(event) => setGroupName(event.target.value)} placeholder="家庭、公司或社團名稱" /></label>
                   <label className="full">備註<textarea value={note} onChange={(event) => setNote(event.target.value)} placeholder="行動協助、孩童或其他需要農場先知道的事" /></label>
                 </div>
-                <h3 className="field-title">企業認養客戶／受邀免費參訪</h3>
+                <h3 className="field-title">企業認養客戶免費參訪</h3>
                 <div className="eligibility-block">
                   {eligibility.status === "none" && (
                     <>
-                      <p className="section-help compact">若您是威果企業認養客戶，或收到 Clement 的特別邀請連結，可登入 WeGrow Orbit 驗證免費參訪資格（不影響一般付費預約，不驗證就維持上方門票計價）。</p>
+                      <p className="section-help compact">若您是威果企業認養客戶，可登入 WeGrow Orbit 驗證免費參訪資格（不影響一般付費預約，不驗證就維持上方門票計價）。</p>
                       <button type="button" className="secondary-button" onClick={startEligibilityClaim}><ShieldCheck /> 登入驗證免費參訪資格</button>
                     </>
                   )}
                   {eligibility.status === "pending" && <div className="loading-state"><LoaderCircle /> 正在前往 WeGrow Orbit 登入…</div>}
                   {eligibility.status === "confirmed" && <div className="blocked-result success-result"><Check /><div><strong>已確認免費參訪資格</strong><p>這次參訪將不收取門票費用。</p></div></div>}
-                  {eligibility.status === "denied" && <div className="blocked-result"><ShieldCheck /><div><strong>免費參訪資格驗證未通過</strong><p>可改用一般付費預約，或聯繫威果官方 LINE 確認邀請或合約範圍。</p></div></div>}
+                  {eligibility.status === "unavailable" && (
+                    <div className="blocked-result"><ShieldCheck /><div><strong>免費資格驗證暫時無法使用</strong><p>服務本身連線異常，不代表您的資格未通過——可稍後再試，或改用一般付費預約，也可聯繫威果官方 LINE 協助確認。</p></div></div>
+                  )}
+                  {eligibility.status === "stale" && (
+                    <div className="blocked-result"><ShieldCheck /><div><strong>免費參訪資格驗證已過期或已使用</strong><p>請重新登入認養企業帳號再驗證一次。</p><button type="button" className="secondary-button" onClick={startEligibilityClaim}><ShieldCheck /> 重新驗證</button></div></div>
+                  )}
+                  {eligibility.status === "not_eligible" && (
+                    <div className="blocked-result"><ShieldCheck /><div><strong>核對後此帳號不符合免費參訪資格</strong><p>可改用一般付費預約，或聯繫威果官方 LINE 確認合約範圍。</p></div></div>
+                  )}
                 </div>
-                <h3 className="field-title">付款方式（尚未開放）</h3>
-                <div className="payment-options">
-                  <button type="button" className="payment" disabled><MessageCircle /> LINE Pay <small>尚未開放付款</small></button>
-                  <button type="button" className="payment" disabled><CreditCard /> 信用卡 <small>尚未開放付款</small></button>
-                </div>
+                {!isFreeConfirmed && (
+                  <>
+                    <h3 className="field-title">付款方式（尚未開放）</h3>
+                    <div className="payment-options">
+                      <button type="button" className="payment" disabled><MessageCircle /> LINE Pay <small>尚未開放付款</small></button>
+                      <button type="button" className="payment" disabled><CreditCard /> 信用卡 <small>尚未開放付款</small></button>
+                    </div>
+                  </>
+                )}
                 <label className="consent"><input checked={consented} onChange={(event) => setConsented(event.target.checked)} type="checkbox" /> <span>我知道雨天活動照常；豪雨或颱風可能另行通知取消。入場會換拖鞋，場域地面不是平整水泥地，請勿奔跑並小心行走。</span></label>
                 <button className="primary-button" disabled={!contactName.trim() || !validPhone || !consented} onClick={() => setStep(4)}>檢查預約內容 <ArrowRight /></button>
               </>
@@ -439,10 +524,14 @@ export default function FarmBookingApp({ initialView = "booking" }: { initialVie
                   <ReviewRow icon={<CalendarDays />} label="日期" value={fullDate.format(new Date(selectedSlot.startsAt))} />
                   <ReviewRow icon={<Clock3 />} label="時段" value={`${timeOnly.format(new Date(selectedSlot.startsAt))}–${timeOnly.format(new Date(selectedSlot.endsAt))}`} />
                   <ReviewRow icon={<Users />} label="人數" value={`${people} 位（成人 ${adult}、兒童 ${child}、幼兒 ${infant}）`} />
-                  <ReviewRow icon={<ShoppingBasket />} label="加選" value={mealCount > 0 ? `盆栽 ${plantCount}、餐飲 ${mealCount}（素食 ${vegetarianMealCount}）` : `盆栽 ${plantCount}、餐飲 ${mealCount}`} />
-                  <ReviewRow icon={<CreditCard />} label="付款" value="尚未開放付款" />
+                  {!isFreeConfirmed && <ReviewRow icon={<ShoppingBasket />} label="加選" value={mealCount > 0 ? `盆栽 ${plantCount}、餐飲 ${mealCount}（素食 ${vegetarianMealCount}）` : `盆栽 ${plantCount}、餐飲 ${mealCount}`} />}
+                  <ReviewRow icon={<CreditCard />} label="付款" value={isFreeConfirmed ? "免費參訪（企業認養）" : "尚未開放付款"} />
                 </div>
-                <div className="price-box"><span>預約金額</span><strong>NT$ {price.totalTwd.toLocaleString()}</strong><small>門票 NT$ {price.ticketUnitPriceTwd.toLocaleString()}／人，共 NT$ {price.ticketSubtotalTwd.toLocaleString()}；本次折抵 NT$ {price.creditAppliedTwd.toLocaleString()}。目前尚未開放付款。</small></div>
+                {isFreeConfirmed ? (
+                  <div className="price-box"><span>預約金額</span><strong>NT$ 0</strong><small>已確認企業認養免費參訪資格，這次參訪不收取門票費用。</small></div>
+                ) : (
+                  <div className="price-box"><span>預約金額</span><strong>NT$ {price.totalTwd.toLocaleString()}</strong><small>門票 NT$ {price.ticketUnitPriceTwd.toLocaleString()}／人，共 NT$ {price.ticketSubtotalTwd.toLocaleString()}；本次折抵 NT$ {price.creditAppliedTwd.toLocaleString()}。目前尚未開放付款。</small></div>
+                )}
                 {checkout.status === "idle" && <button className="primary-button" onClick={submitBooking}>送出預約申請 <ArrowRight /></button>}
                 {checkout.status === "loading" && <button className="primary-button" disabled><LoaderCircle /> 正在保留名額…</button>}
                 {checkout.status === "blocked" && <div className="blocked-result"><ShieldCheck /><div><strong>這次沒有建立預約</strong><p>{checkout.message}</p><span>沒有扣款。請回到時段重新選擇，或聯繫農場。</span></div></div>}

@@ -6,14 +6,18 @@ import { env } from "@/lib/env";
 // 自行填寫的email去問Orbit「這個email是不是認養客戶」——email只是查詢鍵，不是
 // 身分證明，任何人填別人的email都能冒用別人的認養資格。改成nonce兌換：客戶必須
 // 先在Orbit用真實帳密登入，Orbit才會核發這個nonce的資格；這裡只做「兌換一次」，
-// 不接受任何客戶自稱的識別資訊。nonce由本repo的eligibility-session.ts產生並記在
-// farm_eligibility_requests，不是由Orbit端或客戶端決定格式。
+// 不接受任何客戶自稱的識別資訊。
+//
+// 2026-10-17二次修正：改呼叫POST /redeem（有副作用，不是GET /status那種唯讀
+// 查詢），並帶上redemptionId（=farm-booking這端的idempotencyKey）——booking
+// 建立失敗後用同一把idempotencyKey重試，Orbit會回同一個結果而不是拒絕，見
+// wegrow-orbit-src的booking_eligibility.py module docstring。
 export type AdoptionEligibilityResult =
   | { ok: true; eligible: true; sourceOrganizationId: string | null; sourceContractId: string | null }
   | { ok: true; eligible: false; reason: string }
   | { ok: false; error: string };
 
-export async function redeemAdoptionEligibilityNonce(nonce: string, visitDateIso: string): Promise<AdoptionEligibilityResult> {
+export async function redeemAdoptionEligibilityNonce(nonce: string, visitDateIso: string, redemptionId: string): Promise<AdoptionEligibilityResult> {
   const secret = env.FARM_BOOKING_ELIGIBILITY_SECRET;
   const baseUrl = env.ORBIT_API_BASE_URL;
   if (!secret || !baseUrl) {
@@ -21,12 +25,10 @@ export async function redeemAdoptionEligibilityNonce(nonce: string, visitDateIso
   }
   let response: Response;
   try {
-    const url = new URL(`${baseUrl}/api/booking-eligibility/status`);
-    url.searchParams.set("nonce", nonce);
-    url.searchParams.set("visit_date", visitDateIso);
-    response = await fetch(url, {
-      method: "GET",
-      headers: { Authorization: `Bearer ${secret}` },
+    response = await fetch(`${baseUrl}/api/booking-eligibility/redeem`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${secret}` },
+      body: JSON.stringify({ nonce, visit_date: visitDateIso, redemption_id: redemptionId }),
       signal: AbortSignal.timeout(8000),
     });
   } catch (error) {
