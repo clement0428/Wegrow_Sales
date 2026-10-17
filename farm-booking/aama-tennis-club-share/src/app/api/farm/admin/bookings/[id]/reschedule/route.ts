@@ -172,6 +172,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     if (slot && oldSlot) {
       await queueMadouWorkCard(db, newVisitVersion, {
         eventKind: "rescheduled",
+        visitVersion: newVisitVersion,
         oldStartsAt: oldSlot.starts_at,
         booking: {
           bookingId: id, bookingNumber: before.booking_number, groupName: before.group_name,

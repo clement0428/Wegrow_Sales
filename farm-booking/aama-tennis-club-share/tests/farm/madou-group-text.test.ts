@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   buildWorkCardActions, composeDailyDigestText, composeWorkCardCancelledText,
-  composeWorkCardMessage, composeWorkCardRescheduledText, madouDigestDedupeKey, madouWorkCardDedupeKey,
+  composeWorkCardMessage, composeWorkCardRescheduledMessage, madouDigestDedupeKey, madouWorkCardDedupeKey,
   type WorkCardBooking,
 } from "@/lib/line/madou-group-text";
 
@@ -23,7 +23,7 @@ const booking: WorkCardBooking = {
 
 describe("composeWorkCardMessage", () => {
   it("includes booking number, time, group name, and prep counts actually on the booking", () => {
-    const msg = composeWorkCardMessage(booking);
+    const msg = composeWorkCardMessage(booking, 1);
     expect(msg.type).toBe("template");
     expect(msg.template.text).toContain("WG-261016-ABC123");
     expect(msg.template.text).toContain("測試團");
@@ -33,32 +33,41 @@ describe("composeWorkCardMessage", () => {
 
   it("never invents a group name when none is set", () => {
     const noGroup = { ...booking, groupName: null };
-    const msg = composeWorkCardMessage(noGroup);
+    const msg = composeWorkCardMessage(noGroup, 1);
     expect(msg.template.text).not.toContain("團名");
   });
 
   it("omits meal/plant lines entirely when counts are zero, rather than printing '0份'", () => {
     const noExtras = { ...booking, plantCount: 0, mealCount: 0, vegetarianMealCount: 0 };
-    const msg = composeWorkCardMessage(noExtras);
+    const msg = composeWorkCardMessage(noExtras, 1);
     expect(msg.template.text).not.toContain("加購植栽");
     expect(msg.template.text).not.toContain("餐飲");
   });
 
-  it("has exactly the three required postback actions with bookingId wired through", () => {
-    const actions = buildWorkCardActions("B-1");
+  it("has exactly the three required postback actions with bookingId and the card's visit version wired through", () => {
+    const actions = buildWorkCardActions("B-1", 3);
     expect(actions).toEqual([
-      { type: "postback", label: "我接單", data: "action=claim&bookingId=B-1" },
-      { type: "postback", label: "查看準備", data: "action=view_prep&bookingId=B-1" },
-      { type: "postback", label: "回報問題", data: "action=report_issue&bookingId=B-1" },
+      { type: "postback", label: "我接單", data: "action=claim&bookingId=B-1&v=3" },
+      { type: "postback", label: "查看準備", data: "action=view_prep&bookingId=B-1&v=3" },
+      { type: "postback", label: "回報問題", data: "action=report_issue&bookingId=B-1&v=3" },
     ]);
+  });
+
+  it("a card for a later visit_version carries a different claim postback than an earlier one — old cards must not silently validate", () => {
+    const v1 = buildWorkCardActions("B-1", 1).find((a) => a.data.startsWith("action=claim"));
+    const v2 = buildWorkCardActions("B-1", 2).find((a) => a.data.startsWith("action=claim"));
+    expect(v1?.data).not.toBe(v2?.data);
   });
 });
 
-describe("composeWorkCardRescheduledText / composeWorkCardCancelledText", () => {
-  it("states both the old and new time for a reschedule and voids the old claim", () => {
-    const text = composeWorkCardRescheduledText(booking, "2026-10-18T01:00:00.000Z");
-    expect(text).toContain("WG-261016-ABC123");
-    expect(text).toContain("已作廢");
+describe("composeWorkCardRescheduledMessage / composeWorkCardCancelledText", () => {
+  it("states both the old and new time for a reschedule, voids the old claim, and issues a fresh claim button with the new visit version", () => {
+    const msg = composeWorkCardRescheduledMessage(booking, "2026-10-18T01:00:00.000Z", 2);
+    expect(msg.type).toBe("template");
+    expect(msg.template.text).toContain("WG-261016-ABC123");
+    expect(msg.template.text).toContain("已失效");
+    const claimAction = msg.template.actions.find((a) => a.data.startsWith("action=claim"));
+    expect(claimAction?.data).toBe("action=claim&bookingId=B-1&v=2");
   });
 
   it("cancellation text tells staff to stop prep, not just 'cancelled'", () => {

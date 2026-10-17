@@ -149,6 +149,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     if (slot) {
       await queueMadouWorkCard(db, before.visit_version, {
         eventKind: "confirmed",
+        visitVersion: before.visit_version,
         booking: {
           bookingId: id, bookingNumber: before.booking_number, groupName: before.group_name,
           experience: slot.experience_name, startsAt: slot.starts_at, endsAt: slot.ends_at,
@@ -182,6 +183,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     if (slot) {
       await queueMadouWorkCard(db, before.visit_version, {
         eventKind: "cancelled",
+        visitVersion: before.visit_version,
         booking: {
           bookingId: id, bookingNumber: before.booking_number, groupName: before.group_name,
           experience: "", startsAt: slot.starts_at, endsAt: slot.starts_at,

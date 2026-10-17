@@ -15,6 +15,8 @@ export const MADOU_GROUP_RECIPIENT_ID = "madou_group";
 export type MadouWorkCardSnapshot = {
   eventKind: WorkCardEventKind;
   booking: WorkCardBooking;
+  visitVersion: number; // embedded in the card's button postback data; the job
+  // consumer also uses it to detect a newer event superseding this one before send.
   oldStartsAt?: string; // only set for eventKind === "rescheduled"
 };
 

@@ -31,12 +31,18 @@ function prepSummaryLines(b: WorkCardBooking): string[] {
   return lines;
 }
 
-/** Postback data for claim/view-prep/report-issue — kept short, parsed by the webhook. */
-export function buildWorkCardActions(bookingId: string): LineButtonsTemplateMessage["template"]["actions"] {
+/**
+ * Postback data for claim/view-prep/report-issue — kept short, parsed by the webhook.
+ * visitVersion is the version current when THIS card was composed — the webhook's
+ * claim handler rejects a claim attempt whose `v` no longer matches the booking's
+ * current visit_version (a stale card from before a reschedule), so an old card
+ * can never silently claim a booking it no longer accurately describes.
+ */
+export function buildWorkCardActions(bookingId: string, visitVersion: number): LineButtonsTemplateMessage["template"]["actions"] {
   return [
-    { type: "postback", label: "我接單", data: `action=claim&bookingId=${bookingId}` },
-    { type: "postback", label: "查看準備", data: `action=view_prep&bookingId=${bookingId}` },
-    { type: "postback", label: "回報問題", data: `action=report_issue&bookingId=${bookingId}` },
+    { type: "postback", label: "我接單", data: `action=claim&bookingId=${bookingId}&v=${visitVersion}` },
+    { type: "postback", label: "查看準備", data: `action=view_prep&bookingId=${bookingId}&v=${visitVersion}` },
+    { type: "postback", label: "回報問題", data: `action=report_issue&bookingId=${bookingId}&v=${visitVersion}` },
   ];
 }
 
@@ -54,7 +60,7 @@ export function composePrepDetailText(b: WorkCardBooking): string {
   ].filter((line): line is string => Boolean(line)).join("\n");
 }
 
-export function composeWorkCardMessage(b: WorkCardBooking): LineButtonsTemplateMessage {
+export function composeWorkCardMessage(b: WorkCardBooking, visitVersion: number): LineButtonsTemplateMessage {
   const start = new Date(b.startsAt);
   const end = new Date(b.endsAt);
   const text = [
@@ -66,18 +72,26 @@ export function composeWorkCardMessage(b: WorkCardBooking): LineButtonsTemplateM
   return {
     type: "template",
     altText: `新預約工作卡 ${b.bookingNumber}`,
-    template: { type: "buttons", text: text.slice(0, 160), actions: buildWorkCardActions(b.bookingId) },
+    template: { type: "buttons", text: text.slice(0, 160), actions: buildWorkCardActions(b.bookingId, visitVersion) },
   };
 }
 
-export function composeWorkCardRescheduledText(b: WorkCardBooking, oldStartsAt: string): string {
+// 改期後必須發「新」一組按鈕（帶新visitVersion），不能只發文字叫現場自己回頭找
+// 舊卡——舊卡的按鈕本來就該失效（claim.ts的版本檢查），但現場仍需要一個「可以
+// 按」的按鈕來接新時段，否則等於沒有入口可以重新接單。
+export function composeWorkCardRescheduledMessage(b: WorkCardBooking, oldStartsAt: string, visitVersion: number): LineButtonsTemplateMessage {
   const oldStart = new Date(oldStartsAt);
   const newStart = new Date(b.startsAt);
-  return [
+  const text = [
     `預約 ${b.bookingNumber} 已改期`,
     `原訂 ${dateFmt.format(oldStart)} ${timeFmt.format(oldStart)} → 新時段 ${dateFmt.format(newStart)} ${timeFmt.format(newStart)}`,
-    "原工作卡認領狀態已作廢，請重新「我接單」。",
+    "原工作卡按鈕已失效，請用此訊息重新「我接單」。",
   ].join("\n");
+  return {
+    type: "template",
+    altText: `預約改期 ${b.bookingNumber}`,
+    template: { type: "buttons", text: text.slice(0, 160), actions: buildWorkCardActions(b.bookingId, visitVersion) },
+  };
 }
 
 export function composeWorkCardCancelledText(b: Pick<WorkCardBooking, "bookingNumber" | "startsAt">): string {

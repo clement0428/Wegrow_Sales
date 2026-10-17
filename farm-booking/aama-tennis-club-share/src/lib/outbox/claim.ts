@@ -10,7 +10,7 @@ export const LEASE_MINUTES = 2;
 // either never leased or its lease has expired. Returns true if this call
 // won the claim — callers must skip the row if it returns false (another
 // concurrent invocation got there first).
-export async function claimRow(db: D1Database, table: "farm_notification_outbox" | "farm_sales_sync_outbox", rowId: string, leaseOwner: string): Promise<boolean> {
+export async function claimRow(db: D1Database, table: "farm_notification_outbox" | "farm_sales_sync_outbox" | "farm_line_webhook_events", rowId: string, leaseOwner: string): Promise<boolean> {
   const now = new Date().toISOString();
   const leaseUntil = new Date(Date.now() + LEASE_MINUTES * 60_000).toISOString();
   const result = await db
