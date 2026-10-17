@@ -46,6 +46,26 @@ export async function POST(request: Request) {
   const db = await getDb();
   const runId = await startJobRun(db, "sales-sync", triggerSource);
   const now = new Date().toISOString();
+  const apiUrl = env.SALES_SYNC_API_URL;
+  const apiKey = env.SALES_SYNC_API_KEY;
+  const configured = !!(apiUrl && apiKey);
+  const leaseOwner = runId;
+
+  let sent = 0;
+  let failed = 0;
+  const errorCodes = new Set<string>();
+
+  // 2026-10-17審查發現的真實D1額度問題（同reminders/route.ts）：not_configured
+  // 分支原本寫在per-row迴圈裡，每個tick都會把所有due rows各claim+UPDATE一次才
+  // 放棄——這個系統從上線至今SALES_SYNC_API_URL/KEY從未設定過，代表這張表的
+  // 每一筆事件、每一次tick都在白白消耗寫入額度。改成一開始就判斷：完全沒設定
+  // 時一筆都不碰，業務資料原封不動留著，之後真的接上Sales API時下一個tick就會
+  // 正常處理，不是「重試到上限就永久失敗」（那樣會永久遺失這筆同步事件）。
+  if (!configured) {
+    await completeJobRun(db, runId, { dueCount: 0, sent: 0, failed: 0, blocked: 0 }, null, "not_configured_skipped_entirely");
+    return Response.json({ mode: "not_configured", dueCount: 0, sent, failed, runId });
+  }
+
   const due = await db
     .prepare(
       `
@@ -66,31 +86,10 @@ export async function POST(request: Request) {
     .all<DueRow>();
 
   const rows = due.results ?? [];
-  const apiUrl = env.SALES_SYNC_API_URL;
-  const apiKey = env.SALES_SYNC_API_KEY;
-  const configured = !!(apiUrl && apiKey);
-  const leaseOwner = runId;
-
-  let sent = 0;
-  let blockedNotConfigured = 0;
-  let failed = 0;
-  const errorCodes = new Set<string>();
 
   for (const row of rows) {
     const claimed = await claimRow(db, "farm_sales_sync_outbox", row.id, leaseOwner);
     if (!claimed) continue;
-
-    if (!configured) {
-      const delayMinutes = nextAttemptDelayMinutes(row.attempt_count);
-      const next = new Date(Date.now() + delayMinutes * 60_000).toISOString();
-      await db
-        .prepare("UPDATE farm_sales_sync_outbox SET attempt_count = attempt_count + 1, last_error = ?, next_attempt_at = ?, leased_until = NULL WHERE id = ?")
-        .bind("sales_sync_api_not_configured", next, row.id)
-        .run();
-      blockedNotConfigured += 1;
-      errorCodes.add("not_configured");
-      continue;
-    }
 
     const result = await sendSalesSync(apiUrl, apiKey, {
       eventId: row.id,
@@ -138,12 +137,12 @@ export async function POST(request: Request) {
     ? Math.max(0, Math.floor((Date.now() - new Date(oldestPending.oldest).getTime()) / 1000))
     : null;
 
-  await completeJobRun(db, runId, { dueCount: rows.length, sent, failed, blocked: blockedNotConfigured }, oldestPendingSeconds, errorCodes.size ? Array.from(errorCodes).join(",") : null);
+  await completeJobRun(db, runId, { dueCount: rows.length, sent, failed, blocked: 0 }, oldestPendingSeconds, errorCodes.size ? Array.from(errorCodes).join(",") : null);
 
   return Response.json({
-    mode: configured ? "processing" : "not_configured",
+    mode: "processing",
     dueCount: rows.length,
-    sent, blockedNotConfigured, failed,
+    sent, failed,
     runId,
   });
 }

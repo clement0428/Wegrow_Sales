@@ -125,6 +125,24 @@ export async function POST(request: Request) {
 
   const digestQueued = await queueDailyDigestIfDue(db, now);
 
+  // 2026-10-17審查發現的同一類D1額度問題（同reminders/sales-sync）：下面這段
+  // !groupId／!accessToken檢查原本寫在per-row迴圈「裡面」，代表即使一開始就
+  // 知道這兩個設定缺一，還是會把所有due的line_group通知逐筆claim+UPDATE
+  // （attempt_count+1）才放棄——這段期間是百分之百可預期的失敗，卻每個tick都在
+  // 寫。改成查due「之前」先判斷：缺任何一個就整段迴圈完全不進，一筆都不碰，
+  // 業務資料原封不動，設定補齊後下一個tick正常處理。Phase 0（webhook retry）
+  // 跟digest排程本身不依賴這兩個設定（只是寫入queue，不是直接呼叫LINE API），
+  // 所以維持在這個判斷之前執行。
+  if (!groupId || !accessToken) {
+    await completeJobRun(db, runId, { dueCount: 0, sent: 0, failed: 0, blocked: 0 }, null, !groupId ? "no_group_id_skipped_entirely" : "no_credentials_skipped_entirely");
+    return Response.json({
+      mode: "credentials_not_configured",
+      digestQueued, dueCount: 0, sent: 0, superseded: 0, blockedNoCredentials: 0, blockedNoGroup: 0, failed: 0,
+      webhookRetryDueCount: (retryDue.results ?? []).length, webhookRetried, webhookDeadLettered,
+      runId,
+    });
+  }
+
   const due = await db
     .prepare(
       `SELECT id, booking_id, notification_type, content_snapshot_json, attempt_count
@@ -143,8 +161,6 @@ export async function POST(request: Request) {
   let sent = 0;
   let failed = 0;
   let superseded = 0;
-  let blockedNoCredentials = 0;
-  let blockedNoGroup = 0;
   const errorCodes = new Set<string>();
 
   for (const row of rows) {
@@ -166,25 +182,6 @@ export async function POST(request: Request) {
         superseded += 1;
         continue;
       }
-    }
-
-    if (!groupId) {
-      const delayMinutes = nextAttemptDelayMinutes(row.attempt_count);
-      const next = new Date(Date.now() + delayMinutes * 60_000).toISOString();
-      await db.prepare("UPDATE farm_notification_outbox SET attempt_count = attempt_count + 1, last_error = ?, next_attempt_at = ?, leased_until = NULL WHERE id = ?")
-        .bind("madou_group_id_not_configured", next, row.id).run();
-      blockedNoGroup += 1;
-      errorCodes.add("no_group_id");
-      continue;
-    }
-    if (!accessToken) {
-      const delayMinutes = nextAttemptDelayMinutes(row.attempt_count);
-      const next = new Date(Date.now() + delayMinutes * 60_000).toISOString();
-      await db.prepare("UPDATE farm_notification_outbox SET attempt_count = attempt_count + 1, last_error = ?, next_attempt_at = ?, leased_until = NULL WHERE id = ?")
-        .bind("line_messaging_access_token_not_configured", next, row.id).run();
-      blockedNoCredentials += 1;
-      errorCodes.add("no_credentials");
-      continue;
     }
 
     const messages = buildMessages(row.notification_type, row.content_snapshot_json);
@@ -227,12 +224,11 @@ export async function POST(request: Request) {
     ? Math.max(0, Math.floor((Date.now() - new Date(oldestPending.oldest).getTime()) / 1000))
     : null;
 
-  const blocked = blockedNoCredentials + blockedNoGroup;
-  await completeJobRun(db, runId, { dueCount: rows.length, sent, failed, blocked }, oldestPendingSeconds, errorCodes.size ? Array.from(errorCodes).join(",") : null);
+  await completeJobRun(db, runId, { dueCount: rows.length, sent, failed, blocked: 0 }, oldestPendingSeconds, errorCodes.size ? Array.from(errorCodes).join(",") : null);
 
   return Response.json({
-    mode: accessToken && groupId ? "processing" : "credentials_not_configured",
-    digestQueued, dueCount: rows.length, sent, superseded, blockedNoCredentials, blockedNoGroup, failed,
+    mode: "processing",
+    digestQueued, dueCount: rows.length, sent, superseded, failed,
     webhookRetryDueCount: (retryDue.results ?? []).length, webhookRetried, webhookDeadLettered,
     runId,
   });

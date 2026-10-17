@@ -39,6 +39,29 @@ export async function POST(request: Request) {
   const db = await getDb();
   const runId = await startJobRun(db, "reminders", triggerSource);
   const now = new Date().toISOString();
+  const accessToken = env.LINE_MESSAGING_ACCESS_TOKEN;
+  const leaseOwner = runId;
+
+  let sent = 0;
+  let cancelledStale = 0;
+  let blockedNoCredentials = 0;
+  let blockedNoRecipient = 0;
+  let failed = 0;
+  const errorCodes = new Set<string>();
+
+  // 2026-10-17審查發現的真實D1額度問題：原本accessToken檢查寫在per-row迴圈
+  // 「裡面」，代表即使一開始就知道沒設定憑證，還是會查出所有due rows、逐筆
+  // claim+UPDATE（attempt_count+1）才放棄——這張表在憑證沒設定的這段期間完全
+  // 是可預期的「一定失敗」，卻每個tick都在寫。改成在查due rows「之前」就先判斷：
+  // 完全沒設定時，一筆都不碰，不查、不claim、不寫，連next_attempt_at都不動——
+  // 不是「重試次數到了標failed放棄」（那樣會永久丟掉真實客戶這筆通知，憑證之後
+  // 修好也不會再送），而是「沒設定時根本不嘗試」，額度成本是零，業務資料原封
+  // 不動，哪天真的設定好了，下一個tick立刻正常撿起來處理。
+  if (!accessToken) {
+    await completeJobRun(db, runId, { dueCount: 0, sent: 0, failed: 0, blocked: 0 }, null, "no_credentials_skipped_entirely");
+    return Response.json({ mode: "credentials_not_configured", dueCount: 0, sent, cancelledStale, blockedNoCredentials, blockedNoRecipient, failed, runId });
+  }
+
   const due = await db
     .prepare(
       `
@@ -60,15 +83,6 @@ export async function POST(request: Request) {
     .all<DueRow>();
 
   const rows = due.results ?? [];
-  const accessToken = env.LINE_MESSAGING_ACCESS_TOKEN;
-  const leaseOwner = runId;
-
-  let sent = 0;
-  let cancelledStale = 0;
-  let blockedNoCredentials = 0;
-  let blockedNoRecipient = 0;
-  let failed = 0;
-  const errorCodes = new Set<string>();
 
   for (const row of rows) {
     const claimed = await claimRow(db, "farm_notification_outbox", row.id, leaseOwner);
@@ -90,15 +104,12 @@ export async function POST(request: Request) {
       errorCodes.add("no_recipient");
       continue;
     }
-    if (!accessToken) {
-      const delayMinutes = nextAttemptDelayMinutes(row.attempt_count);
-      const next = new Date(Date.now() + delayMinutes * 60_000).toISOString();
-      await db
-        .prepare("UPDATE farm_notification_outbox SET attempt_count = attempt_count + 1, last_error = ?, next_attempt_at = ?, leased_until = NULL WHERE id = ?")
-        .bind("line_messaging_access_token_not_configured", next, row.id)
-        .run();
-      blockedNoCredentials += 1;
-      errorCodes.add("no_credentials");
+    // 行前提醒的拜訪時間若已經過去才被處理到（例如憑證中斷了一段時間才修好，
+    // 累積的舊佇列一次湧入），不能補送一則「明天見」卻是過去式的提醒——直接
+    // 標cancelled，不浪費一次真實LINE API呼叫送出錯誤內容。
+    if (new Date(row.starts_at).getTime() <= Date.now()) {
+      await db.prepare("UPDATE farm_notification_outbox SET status = 'cancelled', last_error = 'visit_already_passed', leased_until = NULL WHERE id = ?").bind(row.id).run();
+      cancelledStale += 1;
       continue;
     }
 
@@ -140,13 +151,12 @@ export async function POST(request: Request) {
     ? Math.max(0, Math.floor((Date.now() - new Date(oldestPending.oldest).getTime()) / 1000))
     : null;
 
-  const blocked = blockedNoCredentials + blockedNoRecipient;
-  await completeJobRun(db, runId, { dueCount: rows.length, sent, failed, blocked }, oldestPendingSeconds, errorCodes.size ? Array.from(errorCodes).join(",") : null);
+  await completeJobRun(db, runId, { dueCount: rows.length, sent, failed, blocked: blockedNoRecipient }, oldestPendingSeconds, errorCodes.size ? Array.from(errorCodes).join(",") : null);
 
   return Response.json({
-    mode: accessToken ? "processing" : "credentials_not_configured",
+    mode: "processing",
     dueCount: rows.length,
-    sent, cancelledStale, blockedNoCredentials, blockedNoRecipient, failed,
+    sent, cancelledStale, blockedNoRecipient, failed,
     runId,
   });
 }
