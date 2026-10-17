@@ -5,7 +5,7 @@ import { classifyLineError } from "@/lib/line/error-classification";
 import {
   composeWorkCardCancelledText, composeWorkCardMessage, composeWorkCardRescheduledMessage,
 } from "@/lib/line/madou-group-text";
-import { queueDailyDigestIfDue, type MadouWorkCardSnapshot } from "@/lib/line/madou-group-queue";
+import { queueDailyDigestIfDue, queueMadouWebhookResult, type MadouWorkCardSnapshot } from "@/lib/line/madou-group-queue";
 import { MAX_SEND_ATTEMPTS, nextAttemptDelayMinutes, sendLinePushMessage, type LineMessage } from "@/lib/line/messaging";
 import { processMadouPostbackAction, type MadouPostbackAction } from "@/lib/line/madou-webhook-process";
 import { isSupersededWorkCard, type CurrentBookingState } from "@/lib/farm/madou-work-card-staleness";
@@ -31,9 +31,9 @@ async function currentBookingState(db: D1Database, bookingId: string | null): Pr
 }
 
 function buildMessages(notificationType: string, snapshotJson: string): LineMessage[] | null {
-  const snapshot = JSON.parse(snapshotJson) as MadouWorkCardSnapshot | { targetDate: string; text: string };
+  const snapshot = JSON.parse(snapshotJson) as MadouWorkCardSnapshot | { targetDate: string; text: string } | { text: string };
 
-  if (notificationType === "madou_daily_digest" && "text" in snapshot) {
+  if ((notificationType === "madou_daily_digest" || notificationType === "madou_webhook_result") && "text" in snapshot) {
     return [{ type: "text", text: snapshot.text }];
   }
   if (notificationType === "madou_work_card_event" && "eventKind" in snapshot) {
@@ -97,15 +97,14 @@ export async function POST(request: Request) {
       continue;
     }
     try {
-      const result = await processMadouPostbackAction(db, row.action as MadouPostbackAction, row.booking_id, row.visit_version_param, member);
+      const result = await processMadouPostbackAction(db, row.action as MadouPostbackAction, row.booking_id, row.visit_version_param, member, row.id);
       await db.prepare("UPDATE farm_line_webhook_events SET status = 'processed', leased_until = NULL, updated_at = ? WHERE id = ?").bind(nowIso2, row.id).run();
       webhookRetried += 1;
       // The original reply token is long expired by retry time (LINE expects
-      // a reply within seconds) — surface the delayed result via a group
-      // push instead, so a retried action isn't silently invisible to staff.
-      if (accessToken && groupId) {
-        await sendLinePushMessage(accessToken, groupId, [{ type: "text", text: `[延遲處理] ${result.replyText}` }], row.id);
-      }
+      // a reply within seconds) — queue the delayed result into the same
+      // durable outbox the loop below already drains with full backoff,
+      // rather than a bare fire-and-forget push whose result nobody checked.
+      await queueMadouWebhookResult(db, row.id, `[延遲處理] ${result.replyText}`);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       const attemptsAfter = row.attempt_count + 1;

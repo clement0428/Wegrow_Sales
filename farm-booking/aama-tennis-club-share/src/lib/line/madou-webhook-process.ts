@@ -1,5 +1,4 @@
 import "server-only";
-import { newId } from "@/lib/db/uuid";
 import { STAFF_ROLES } from "@/lib/auth/roles";
 import { claimBooking } from "@/lib/farm/claim";
 import { composePrepDetailText, type WorkCardBooking } from "./madou-group-text";
@@ -24,18 +23,37 @@ export type MadouProcessResult = { replyText: string };
 // Does not call the LINE API itself — callers decide how to deliver
 // replyText (reply token for the fast synchronous path; a group push for the
 // retry path, since the original reply token is long expired by then).
+// eventId is the originating LINE webhookEventId — threaded through so the
+// one genuinely non-idempotent side effect here (report_issue's audit-log
+// insert) can be keyed on it and made safe to re-run (INSERT OR IGNORE),
+// since this function is called both from the webhook's own synchronous
+// attempt and again from the retry worker for anything that failed —
+// without this, a retried report_issue produced a second audit-log row for
+// the same real-world report (found by review, confirmed by re-reading the
+// code: the insert used a fresh random id with no dedupe key at all).
 export async function processMadouPostbackAction(
   db: D1Database,
   action: MadouPostbackAction,
   bookingId: string,
   expectedVisitVersion: number | null,
   member: MadouActorMember,
+  eventId: string,
 ): Promise<MadouProcessResult> {
   if (action === "claim") {
     if (member.role !== "admin" && member.role !== "reception") {
       return { replyText: "此角色無法接單，請聯絡管理員。" };
     }
-    const result = await claimBooking(db, bookingId, member.id, "line_webhook", expectedVisitVersion ?? undefined);
+    // A missing/unparseable `v` must REJECT, not silently skip the version
+    // check — passing `undefined` through to claimBooking (its sentinel for
+    // "no version check requested," used by the admin-UI route which has no
+    // card version to compare against) would let a malformed or stripped
+    // postback bypass the whole point of the version check. Found by review:
+    // the previous version did exactly `expectedVisitVersion ?? undefined`,
+    // which converts "missing" into "don't check" instead of "reject."
+    if (expectedVisitVersion === null) {
+      return { replyText: "此工作卡版本遺失或格式不正確，請使用最新訊息重新接單。" };
+    }
+    const result = await claimBooking(db, bookingId, member.id, "line_webhook", expectedVisitVersion);
     if (result.ok) return { replyText: `已由 ${member.display_name} 接單。` };
     if (result.reason === "already_claimed") return { replyText: `已有人接單：${result.claimedByName ?? "未知"}` };
     if (result.reason === "cancelled") return { replyText: "這筆預約已取消，無法接單。" };
@@ -55,13 +73,15 @@ export async function processMadouPostbackAction(
     return { replyText: booking ? composePrepDetailText(booking) : "找不到這筆預約。" };
   }
 
-  // report_issue
+  // report_issue — id derived from eventId (not a random newId()) + INSERT OR
+  // IGNORE makes a retried/duplicate-processed event a safe no-op instead of
+  // a second audit-log row for the same real-world report.
   await db
     .prepare(
-      `INSERT INTO farm_audit_log (id, entity_type, entity_id, actor_type, actor_id, action, from_state, to_state, reason, created_at)
+      `INSERT OR IGNORE INTO farm_audit_log (id, entity_type, entity_id, actor_type, actor_id, action, from_state, to_state, reason, created_at)
        VALUES (?, 'farm_booking', ?, 'line_webhook', ?, 'report_issue', NULL, NULL, '現場透過麻豆群回報問題', ?)`,
     )
-    .bind(newId(), bookingId, member.id, new Date().toISOString())
+    .bind(`madou-report-${eventId}`, bookingId, member.id, new Date().toISOString())
     .run();
   return { replyText: "已記錄，將由管理員確認處理。" };
 }

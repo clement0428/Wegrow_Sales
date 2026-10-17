@@ -36,6 +36,27 @@ export async function queueMadouWorkCard(db: D1Database, visitVersion: number, s
     .run();
 }
 
+// The reply/ack to a staff member's postback action is a notification, not
+// the business action itself — the action (claim/report_issue) already
+// committed durably before this is ever called. If the fast path (reply
+// token, or a retry-worker group push) fails to deliver, that must not be
+// silently lost: queue it into the same durable, already-retried outbox the
+// job route drains, keyed by eventId so calling this twice for the same
+// event is a no-op. Found by review: the previous version fired-and-forgot
+// both the sync reply and the retry-path's delayed push, discarding whatever
+// SendResult came back.
+export async function queueMadouWebhookResult(db: D1Database, eventId: string, text: string): Promise<void> {
+  const now = new Date().toISOString();
+  await db
+    .prepare(
+      `INSERT OR IGNORE INTO farm_notification_outbox
+       (id, booking_id, channel, notification_type, recipient_id, content_snapshot_json, retry_key, status, attempt_count, scheduled_at, next_attempt_at, created_at)
+       VALUES (?, NULL, 'line_group', 'madou_webhook_result', ?, ?, ?, 'queued', 0, ?, ?, ?)`,
+    )
+    .bind(newId(), MADOU_GROUP_RECIPIENT_ID, JSON.stringify({ text }), `madou:webhook-result:${eventId}`, now, now, now)
+    .run();
+}
+
 type TomorrowBookingRow = {
   booking_number: string;
   group_name: string | null;

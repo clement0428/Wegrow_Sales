@@ -1,8 +1,10 @@
 import { getDb } from "@/lib/db/client";
 import { env } from "@/lib/env";
+import { queueMadouWebhookResult } from "@/lib/line/madou-group-queue";
 import { processMadouPostbackAction, type MadouPostbackAction } from "@/lib/line/madou-webhook-process";
 import { sendLineReplyMessage } from "@/lib/line/messaging";
 import { verifyLineWebhookSignature } from "@/lib/line/webhook-signature";
+import { claimRow } from "@/lib/outbox/claim";
 
 const KNOWN_ACTIONS: ReadonlySet<string> = new Set(["claim", "view_prep", "report_issue"]);
 
@@ -14,8 +16,13 @@ const KNOWN_ACTIONS: ReadonlySet<string> = new Set(["claim", "view_prep", "repor
 // 事件處理分兩段：先寫入farm_line_webhook_events（status='queued'），再執行動作；
 // 成功才轉status='processed'。LINE對已回200的事件永不重送，所以動作失敗時絕對
 // 不能讓事件就此消失——失敗留在status='queued'讓/api/jobs/madou-group的重試階段
-// 之後再試（見madou-webhook-process.ts）。這是本輪審查發現的P0缺口修正：原版
-// 本只用這張表做去重、動作失敗仍回200且沒有任何重試路徑。
+// 之後再試（見madou-webhook-process.ts）。
+//
+// 這裡的同步處理路徑跟job的重試階段共用同一個claimRow()原子租約——insert完
+// status='queued'到真正呼叫processMadouPostbackAction之間若剛好job的重試輪詢也
+// 選到同一筆（兩者都只看status='queued'且leased_until為空/過期），沒有租約保護
+// 會造成同一個動作被處理兩次（對report_issue這種非天生idempotent的動作是真的
+// 會寫出兩筆稽核紀錄）。經審查發現後補上。
 export async function POST(request: Request) {
   const channelSecret = env.LINE_MESSAGING_CHANNEL_SECRET;
   const rawBody = await request.text();
@@ -55,7 +62,10 @@ export async function POST(request: Request) {
     const action = fields.get("action");
     const bookingId = fields.get("bookingId");
     const vRaw = fields.get("v");
-    const expectedVisitVersion = vRaw !== null && vRaw !== "" && !Number.isNaN(Number(vRaw)) ? Number(vRaw) : null;
+    // Strict: only a clean non-negative integer counts as a version. Missing,
+    // empty, "1.5", "abc", "1e2" — all null, which processMadouPostbackAction's
+    // claim branch treats as a hard rejection, not "skip the check."
+    const expectedVisitVersion = vRaw !== null && /^\d+$/.test(vRaw) ? Number(vRaw) : null;
     if (!action || !bookingId || !KNOWN_ACTIONS.has(action)) continue;
 
     const member = await db.prepare("SELECT id, display_name, role FROM members WHERE line_user_id = ?").bind(source.userId).first<{ id: string; display_name: string; role: string }>();
@@ -72,11 +82,14 @@ export async function POST(request: Request) {
       .run();
     if (!inserted.meta.changes) continue; // already recorded this exact event (duplicate delivery or already-processed)
 
+    const claimed = await claimRow(db, "farm_line_webhook_events", eventId, `webhook-sync-${eventId}`);
+    if (!claimed) continue; // lost the race to a concurrent retry-worker tick — it owns this event now
+
     let replyText: string | null = null;
     try {
-      const result = await processMadouPostbackAction(db, action as MadouPostbackAction, bookingId, expectedVisitVersion, member);
+      const result = await processMadouPostbackAction(db, action as MadouPostbackAction, bookingId, expectedVisitVersion, member, eventId);
       replyText = result.replyText;
-      await db.prepare("UPDATE farm_line_webhook_events SET status = 'processed', updated_at = ? WHERE id = ?").bind(new Date().toISOString(), eventId).run();
+      await db.prepare("UPDATE farm_line_webhook_events SET status = 'processed', leased_until = NULL, updated_at = ? WHERE id = ?").bind(new Date().toISOString(), eventId).run();
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       const now2 = new Date().toISOString();
@@ -84,20 +97,26 @@ export async function POST(request: Request) {
       // jobs/madou-group/route.ts picks up 'queued' rows, same vocabulary as
       // farm_notification_outbox so claimRow() can be reused unmodified.
       await db
-        .prepare("UPDATE farm_line_webhook_events SET attempt_count = attempt_count + 1, error = ?, next_attempt_at = ?, updated_at = ? WHERE id = ?")
+        .prepare("UPDATE farm_line_webhook_events SET attempt_count = attempt_count + 1, error = ?, next_attempt_at = ?, leased_until = NULL, updated_at = ? WHERE id = ?")
         .bind(message, now2, now2, eventId)
         .run();
       console.error("madou webhook event failed, queued for retry", error);
     }
 
-    if (replyText) await replyIfPossible(accessToken, event.replyToken, replyText);
+    if (replyText) {
+      const replied = accessToken && event.replyToken
+        ? await sendLineReplyMessage(accessToken, event.replyToken, [{ type: "text", text: replyText }])
+        : { ok: false as const, status: 0, error: "no_access_token_or_reply_token" };
+      // The business action already committed above regardless of this
+      // result — this is purely "did the human get told." If the reply
+      // failed (expired token, network blip, no credentials yet), queue a
+      // durable fallback instead of just losing the acknowledgement; the
+      // existing outbox retry loop in jobs/madou-group/route.ts drains it
+      // with its normal backoff.
+      if (!replied.ok) await queueMadouWebhookResult(db, eventId, replyText);
+    }
     handled += 1;
   }
 
   return Response.json({ handled });
-}
-
-async function replyIfPossible(accessToken: string | undefined, replyToken: string | undefined, text: string): Promise<void> {
-  if (!accessToken || !replyToken) return;
-  await sendLineReplyMessage(accessToken, replyToken, [{ type: "text", text }]);
 }
