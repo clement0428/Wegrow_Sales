@@ -1,5 +1,6 @@
 import "server-only";
 import { newId } from "@/lib/db/uuid";
+import { confirmBooking } from "@/lib/farm/confirm-booking";
 
 export type ClaimResult =
   | { ok: true }
@@ -64,6 +65,13 @@ export async function claimBooking(
     )
     .bind(newId(), bookingId, actorType, memberId, now)
     .run();
+
+  // 2026-10-17審查：接待現場認領一筆仍在requested(待接待)狀態的預約，必須直接
+  // 完成確認——不能留在「已認領但仍是requested」這種中間狀態，否則就是「先認領
+  // 才confirmed」造成客戶永遠收不到成立通知的循環。confirmBooking()本身只對
+  // booking_status='requested'生效，如果這筆早就被admin後台confirm過，這裡會
+  // 安靜no-op(not_requested)，不影響claim本身已經成功的結果。
+  await confirmBooking(db, bookingId, actorType, memberId);
 
   return { ok: true };
 }

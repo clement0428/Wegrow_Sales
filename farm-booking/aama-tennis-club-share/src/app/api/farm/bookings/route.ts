@@ -7,6 +7,7 @@ import { getCurrentMember } from "@/lib/auth/current-member";
 import { isAllowedBookingSlot, ticketRateBpsForSlot } from "@/lib/farm/visit-policy";
 import { queueSalesSyncEvent } from "@/lib/sales/queue";
 import { checkAdoptionVisitEligibility } from "@/lib/farm/adoption-eligibility";
+import { queueMadouWorkCard } from "@/lib/line/madou-group-queue";
 
 const createSchema = z.object({
   slotId: z.string().min(1).max(100),
@@ -81,8 +82,10 @@ export async function POST(request: Request) {
   }
 
   const slot = await db.prepare(
-    "SELECT starts_at, ends_at FROM farm_slots WHERE id = ? LIMIT 1",
-  ).bind(input.slotId).first<{ starts_at: string; ends_at: string }>();
+    `SELECT s.starts_at, s.ends_at, e.name AS experience_name
+     FROM farm_slots s JOIN farm_experiences e ON e.id = s.experience_id
+     WHERE s.id = ? LIMIT 1`,
+  ).bind(input.slotId).first<{ starts_at: string; ends_at: string; experience_name: string }>();
   if (!slot || !isAllowedBookingSlot(slot.starts_at, slot.ends_at)) {
     return Response.json({ error: "這個時段不符合農場開放規則，請重新選擇。" }, { status: 400 });
   }
@@ -208,6 +211,20 @@ export async function POST(request: Request) {
   }
 
   await queueSalesSyncEvent(db, id, "booking_created");
+  // 2026-10-17審查：待接待預約一建立就要讓現場看到，不能等admin明確confirm才發卡
+  // ——否則是「先確認才發卡」的循環。visit_version在這個時間點就是初始值1（booking
+  // 剛建立，從未改期過）。
+  await queueMadouWorkCard(db, 1, {
+    eventKind: "pending",
+    visitVersion: 1,
+    booking: {
+      bookingId: id, bookingNumber: number, groupName: input.groupName || null,
+      experience: slot.experience_name, startsAt: slot.starts_at, endsAt: slot.ends_at,
+      adultCount: input.adultCount, childCount: input.childCount, infantCount: input.infantCount,
+      totalPeople, plantCount: input.plantCount, mealCount: input.mealCount,
+      vegetarianMealCount: input.vegetarianMealCount,
+    },
+  });
 
   const booking = await findBooking(input.phone, code);
   return Response.json({

@@ -60,6 +60,26 @@ export function composePrepDetailText(b: WorkCardBooking): string {
   ].filter((line): line is string => Boolean(line)).join("\n");
 }
 
+// 2026-10-17審查要求：待接待(requested)預約一建立就要發工作卡，不能等到admin
+// 明確按confirm才發——否則就是「先確認才發卡」的循環。跟composeWorkCardMessage
+// (已confirmed)文案刻意不同，避免現場誤以為這團已經確定，實際上還沒人接待。
+export function composeWorkCardPendingMessage(b: WorkCardBooking, visitVersion: number): LineButtonsTemplateMessage {
+  const start = new Date(b.startsAt);
+  const end = new Date(b.endsAt);
+  const text = [
+    `待接待預約 ${b.bookingNumber}`,
+    `${dateFmt.format(start)} ${timeFmt.format(start)}–${timeFmt.format(end)}｜${b.experience}`,
+    b.groupName ? `團名：${b.groupName}` : null,
+    ...prepSummaryLines(b),
+    "尚未有人接待，請按「我來接待」確認。",
+  ].filter((line): line is string => Boolean(line)).join("\n");
+  return {
+    type: "template",
+    altText: `待接待預約 ${b.bookingNumber}`,
+    template: { type: "buttons", text: text.slice(0, 160), actions: buildWorkCardActions(b.bookingId, visitVersion) },
+  };
+}
+
 export function composeWorkCardMessage(b: WorkCardBooking, visitVersion: number): LineButtonsTemplateMessage {
   const start = new Date(b.startsAt);
   const end = new Date(b.endsAt);
@@ -127,7 +147,7 @@ export function composeDailyDigestText(dateIso: string, bookings: DailyDigestBoo
   return lines.join("\n");
 }
 
-export type WorkCardEventKind = "confirmed" | "rescheduled" | "cancelled";
+export type WorkCardEventKind = "pending" | "confirmed" | "rescheduled" | "cancelled";
 
 export function madouWorkCardDedupeKey(bookingId: string, visitVersion: number, eventKind: WorkCardEventKind): string {
   return `${bookingId}:madou:${visitVersion}:work_card:${eventKind}`;

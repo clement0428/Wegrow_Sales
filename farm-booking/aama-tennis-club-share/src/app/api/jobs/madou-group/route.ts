@@ -3,7 +3,7 @@ import { getDb } from "@/lib/db/client";
 import { env } from "@/lib/env";
 import { classifyLineError } from "@/lib/line/error-classification";
 import {
-  composeWorkCardCancelledText, composeWorkCardMessage, composeWorkCardRescheduledMessage,
+  composeWorkCardCancelledText, composeWorkCardMessage, composeWorkCardPendingMessage, composeWorkCardRescheduledMessage,
 } from "@/lib/line/madou-group-text";
 import { buildQueueMadouWebhookResultStatement, queueDailyDigestIfDue, type MadouWorkCardSnapshot } from "@/lib/line/madou-group-queue";
 import { MAX_SEND_ATTEMPTS, nextAttemptDelayMinutes, sendLinePushMessage, type LineMessage } from "@/lib/line/messaging";
@@ -27,7 +27,7 @@ type DueRow = { id: string; booking_id: string | null; notification_type: string
 // booking_id) or when the booking no longer exists.
 async function currentBookingState(db: D1Database, bookingId: string | null): Promise<CurrentBookingState | null> {
   if (!bookingId) return null;
-  return db.prepare("SELECT cancelled_at, visit_version FROM farm_bookings WHERE id = ?").bind(bookingId).first<CurrentBookingState>();
+  return db.prepare("SELECT cancelled_at, visit_version, booking_status FROM farm_bookings WHERE id = ?").bind(bookingId).first<CurrentBookingState>();
 }
 
 function buildMessages(notificationType: string, snapshotJson: string): LineMessage[] | null {
@@ -37,6 +37,7 @@ function buildMessages(notificationType: string, snapshotJson: string): LineMess
     return [{ type: "text", text: snapshot.text }];
   }
   if (notificationType === "madou_work_card_event" && "eventKind" in snapshot) {
+    if (snapshot.eventKind === "pending") return [composeWorkCardPendingMessage(snapshot.booking, snapshot.visitVersion)];
     if (snapshot.eventKind === "confirmed") return [composeWorkCardMessage(snapshot.booking, snapshot.visitVersion)];
     if (snapshot.eventKind === "rescheduled" && snapshot.oldStartsAt) {
       return [composeWorkCardRescheduledMessage(snapshot.booking, snapshot.oldStartsAt, snapshot.visitVersion)];

@@ -2,7 +2,7 @@ import { z } from "zod";
 import { canCheckIn, isAdmin, requireStaff } from "@/lib/auth/current-member";
 import { getDb } from "@/lib/db/client";
 import { newId } from "@/lib/db/uuid";
-import { reminderAtForVisit, reminderDedupeKey } from "@/lib/farm/reminders";
+import { confirmBooking } from "@/lib/farm/confirm-booking";
 import { queueMadouWorkCard } from "@/lib/line/madou-group-queue";
 import { queueSalesSyncEvent } from "@/lib/sales/queue";
 
@@ -19,13 +19,10 @@ const bodySchema = z.object({
 // version increments on every transition — this is the "monotonic
 // booking_version" Sales' sync contract uses to reject out-of-order events
 // (a previously-unused column that's existed since migration 0006).
+// 'confirm' is handled separately via confirmBooking() (see below) — it's
+// shared with claim.ts's auto-confirm-on-claim path, so it can't live in
+// this generic table without duplicating that logic in two places.
 const TRANSITIONS: Record<string, { set: string; where: string; from: string; to: string }> = {
-  confirm: {
-    set: "booking_status = 'confirmed', version = version + 1, updated_at = ?",
-    where: "booking_status = 'requested' AND cancelled_at IS NULL",
-    from: "requested",
-    to: "confirmed",
-  },
   cancel: {
     set: "cancelled_at = ?, version = version + 1, updated_at = ?",
     where: "cancelled_at IS NULL AND arrived_at IS NULL",
@@ -60,6 +57,19 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
 
   const db = await getDb();
   const now = new Date().toISOString();
+
+  if (action === "confirm") {
+    const result = await confirmBooking(db, id, "staff", member.id);
+    if (!result.ok) {
+      const status = result.reason === "not_found" ? 404 : 409;
+      const error = result.reason === "not_found"
+        ? "找不到這筆預約"
+        : "這筆預約目前的狀態不允許「confirm」這個動作，可能已被其他管理員異動過，請重新整理。";
+      return Response.json({ error, code: result.reason === "not_found" ? undefined : "state_conflict" }, { status });
+    }
+    return Response.json({ ok: true, action, bookingId: id });
+  }
+
   const transition = TRANSITIONS[action];
 
   const before = await db
@@ -112,55 +122,6 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     )
     .bind(newId(), id, member.id, action, transition.from === "*" ? before.booking_status : transition.from, transition.to, reason, now)
     .run();
-
-  if (action === "confirm") {
-    const slot = await db
-      .prepare(
-        `SELECT s.starts_at, s.ends_at, e.name AS experience_name
-         FROM farm_slots s JOIN farm_experiences e ON e.id = s.experience_id
-         WHERE s.id = ?`,
-      )
-      .bind(before.slot_id)
-      .first<{ starts_at: string; ends_at: string; experience_name: string }>();
-
-    if (before.customer_member_id && slot) {
-      const scheduledAt = reminderAtForVisit(slot.starts_at).toISOString();
-      const retryKey = reminderDedupeKey(id, before.visit_version);
-      await db
-        .prepare(
-          `INSERT OR IGNORE INTO farm_notification_outbox
-           (id, booking_id, channel, notification_type, recipient_id, content_snapshot_json, retry_key, status, attempt_count, scheduled_at, next_attempt_at, created_at)
-           VALUES (?, ?, 'line', 'day_before_reminder', ?, ?, ?, 'queued', 0, ?, ?, ?)`,
-        )
-        .bind(
-          newId(),
-          id,
-          before.customer_member_id,
-          JSON.stringify({ bookingId: id, visitVersion: before.visit_version, note: "LINE Messaging API credentials not configured — this row queues, actual send is BLOCKED until credentials exist. See jobs/reminders route." }),
-          retryKey,
-          scheduledAt,
-          scheduledAt,
-          now,
-        )
-        .run();
-    }
-    // 規格第3-4節「新預約工作卡」：confirm 當下就發到麻豆現場群，不等到前一天——
-    // 現場需要提早知道有新團才能安排接待與備料。
-    if (slot) {
-      await queueMadouWorkCard(db, before.visit_version, {
-        eventKind: "confirmed",
-        visitVersion: before.visit_version,
-        booking: {
-          bookingId: id, bookingNumber: before.booking_number, groupName: before.group_name,
-          experience: slot.experience_name, startsAt: slot.starts_at, endsAt: slot.ends_at,
-          adultCount: before.adult_count, childCount: before.child_count, infantCount: before.infant_count,
-          totalPeople: before.total_people, plantCount: before.plant_count, mealCount: before.meal_count,
-          vegetarianMealCount: before.vegetarian_meal_count,
-        },
-      });
-    }
-    await queueSalesSyncEvent(db, id, "booking_confirmed");
-  }
 
   if (action === "cancel") {
     // 規格「改期取消舊提醒」：this booking's own reminder(s) should stop, not
