@@ -4,7 +4,7 @@ import { env } from "@/lib/env";
 import { sendSalesSync } from "@/lib/sales/sync-client";
 import { MAX_SEND_ATTEMPTS, nextAttemptDelayMinutes } from "@/lib/outbox/backoff";
 import { claimRow } from "@/lib/outbox/claim";
-import { startJobRun, completeJobRun } from "@/lib/outbox/job-run";
+import { startJobRun, completeJobRun, failJobRun } from "@/lib/outbox/job-run";
 
 function sameSecret(actual: string, expected: string): boolean {
   const a = Buffer.from(actual);
@@ -44,105 +44,112 @@ export async function POST(request: Request) {
   const triggerSource = request.headers.get("x-trigger-source") === "cron" ? "cron" : "manual";
 
   const db = await getDb();
-  const runId = await startJobRun(db, "sales-sync", triggerSource);
-  const now = new Date().toISOString();
-  const apiUrl = env.SALES_SYNC_API_URL;
-  const apiKey = env.SALES_SYNC_API_KEY;
-  const configured = !!(apiUrl && apiKey);
-  const leaseOwner = runId;
-
+  const jobRun = startJobRun("sales-sync", triggerSource);
+  const runId = jobRun.id;
+  let dueCount = 0;
   let sent = 0;
   let failed = 0;
   const errorCodes = new Set<string>();
+  try {
+    const now = new Date().toISOString();
+    const apiUrl = env.SALES_SYNC_API_URL;
+    const apiKey = env.SALES_SYNC_API_KEY;
+    const configured = !!(apiUrl && apiKey);
+    const leaseOwner = runId;
 
-  // 2026-10-17審查發現的真實D1額度問題（同reminders/route.ts）：not_configured
-  // 分支原本寫在per-row迴圈裡，每個tick都會把所有due rows各claim+UPDATE一次才
-  // 放棄——這個系統從上線至今SALES_SYNC_API_URL/KEY從未設定過，代表這張表的
-  // 每一筆事件、每一次tick都在白白消耗寫入額度。改成一開始就判斷：完全沒設定
-  // 時一筆都不碰，業務資料原封不動留著，之後真的接上Sales API時下一個tick就會
-  // 正常處理，不是「重試到上限就永久失敗」（那樣會永久遺失這筆同步事件）。
-  if (!configured) {
-    await completeJobRun(db, runId, { dueCount: 0, sent: 0, failed: 0, blocked: 0 }, null, "not_configured_skipped_entirely");
-    return Response.json({ mode: "not_configured", dueCount: 0, sent, failed, runId });
-  }
-
-  const due = await db
-    .prepare(
-      `
-    SELECT o.id, o.booking_id, o.event_type, o.attempt_count, o.created_at,
-           b.booking_number, b.version AS booking_version, b.contact_name, b.contact_phone, b.group_name, b.total_people,
-           s.starts_at, e.name AS experience
-    FROM farm_sales_sync_outbox o
-    JOIN farm_bookings b ON b.id = o.booking_id
-    JOIN farm_slots s ON s.id = b.slot_id
-    JOIN farm_experiences e ON e.id = s.experience_id
-    WHERE o.status = 'queued' AND datetime(o.next_attempt_at) <= datetime(?)
-      AND (o.leased_until IS NULL OR datetime(o.leased_until) < datetime(?))
-    ORDER BY datetime(o.next_attempt_at)
-    LIMIT 50
-  `,
-    )
-    .bind(now, now)
-    .all<DueRow>();
-
-  const rows = due.results ?? [];
-
-  for (const row of rows) {
-    const claimed = await claimRow(db, "farm_sales_sync_outbox", row.id, leaseOwner);
-    if (!claimed) continue;
-
-    const result = await sendSalesSync(apiUrl, apiKey, {
-      eventId: row.id,
-      schemaVersion: 1,
-      eventType: row.event_type,
-      occurredAt: row.created_at,
-      bookingId: row.booking_id,
-      bookingVersion: row.booking_version,
-      bookingNumber: row.booking_number,
-      contactName: row.contact_name,
-      contactPhone: row.contact_phone,
-      groupName: row.group_name ?? "",
-      totalPeople: row.total_people,
-      startsAt: row.starts_at,
-      experience: row.experience,
-    });
-    if (result.ok) {
-      await db
-        .prepare("UPDATE farm_sales_sync_outbox SET status = 'sent', accepted_at = ?, attempt_count = attempt_count + 1, leased_until = NULL WHERE id = ?")
-        .bind(new Date().toISOString(), row.id)
-        .run();
-      sent += 1;
-    } else {
-      const attemptsAfter = row.attempt_count + 1;
-      const permanentlyFailed = isPermanentSyncError(result.status) || attemptsAfter >= MAX_SEND_ATTEMPTS;
-      const delayMinutes = nextAttemptDelayMinutes(row.attempt_count);
-      const next = new Date(Date.now() + delayMinutes * 60_000).toISOString();
-      await db
-        .prepare(
-          `UPDATE farm_sales_sync_outbox
-           SET attempt_count = ?, last_error = ?, next_attempt_at = ?, status = ?, leased_until = NULL
-           WHERE id = ?`,
-        )
-        .bind(attemptsAfter, `${result.status}: ${result.error}`, next, permanentlyFailed ? "failed" : "queued", row.id)
-        .run();
-      failed += 1;
-      errorCodes.add(`${result.status}`);
+    // 2026-10-17審查發現的真實D1額度問題（同reminders/route.ts）：not_configured
+    // 分支原本寫在per-row迴圈裡，每個tick都會把所有due rows各claim+UPDATE一次才
+    // 放棄——這個系統從上線至今SALES_SYNC_API_URL/KEY從未設定過，代表這張表的
+    // 每一筆事件、每一次tick都在白白消耗寫入額度。改成一開始就判斷：完全沒設定
+    // 時一筆都不碰，業務資料原封不動留著，之後真的接上Sales API時下一個tick就會
+    // 正常處理，不是「重試到上限就永久失敗」（那樣會永久遺失這筆同步事件）。
+    if (!configured) {
+      await completeJobRun(db, jobRun, { dueCount: 0, sent: 0, failed: 0, blocked: 0 }, null, "not_configured_skipped_entirely");
+      return Response.json({ mode: "not_configured", dueCount: 0, sent, failed, runId });
     }
+
+    const due = await db
+      .prepare(
+        `
+      SELECT o.id, o.booking_id, o.event_type, o.attempt_count, o.created_at,
+             b.booking_number, b.version AS booking_version, b.contact_name, b.contact_phone, b.group_name, b.total_people,
+             s.starts_at, e.name AS experience
+      FROM farm_sales_sync_outbox o
+      JOIN farm_bookings b ON b.id = o.booking_id
+      JOIN farm_slots s ON s.id = b.slot_id
+      JOIN farm_experiences e ON e.id = s.experience_id
+      WHERE o.status = 'queued' AND datetime(o.next_attempt_at) <= datetime(?)
+        AND (o.leased_until IS NULL OR datetime(o.leased_until) < datetime(?))
+      ORDER BY datetime(o.next_attempt_at)
+      LIMIT 50
+    `,
+      )
+      .bind(now, now)
+      .all<DueRow>();
+
+    const rows = due.results ?? [];
+    dueCount += rows.length;
+
+    for (const row of rows) {
+      const claimed = await claimRow(db, "farm_sales_sync_outbox", row.id, leaseOwner);
+      if (!claimed) continue;
+
+      const result = await sendSalesSync(apiUrl, apiKey, {
+        eventId: row.id,
+        schemaVersion: 1,
+        eventType: row.event_type,
+        occurredAt: row.created_at,
+        bookingId: row.booking_id,
+        bookingVersion: row.booking_version,
+        bookingNumber: row.booking_number,
+        contactName: row.contact_name,
+        contactPhone: row.contact_phone,
+        groupName: row.group_name ?? "",
+        totalPeople: row.total_people,
+        startsAt: row.starts_at,
+        experience: row.experience,
+      });
+      if (result.ok) {
+        await db
+          .prepare("UPDATE farm_sales_sync_outbox SET status = 'sent', accepted_at = ?, attempt_count = attempt_count + 1, leased_until = NULL WHERE id = ?")
+          .bind(new Date().toISOString(), row.id)
+          .run();
+        sent += 1;
+      } else {
+        const attemptsAfter = row.attempt_count + 1;
+        const permanentlyFailed = isPermanentSyncError(result.status) || attemptsAfter >= MAX_SEND_ATTEMPTS;
+        const delayMinutes = nextAttemptDelayMinutes(row.attempt_count);
+        const next = new Date(Date.now() + delayMinutes * 60_000).toISOString();
+        await db
+          .prepare(
+            `UPDATE farm_sales_sync_outbox
+             SET attempt_count = ?, last_error = ?, next_attempt_at = ?, status = ?, leased_until = NULL
+             WHERE id = ?`,
+          )
+          .bind(attemptsAfter, `${result.status}: ${result.error}`, next, permanentlyFailed ? "failed" : "queued", row.id)
+          .run();
+        failed += 1;
+        errorCodes.add(`${result.status}`);
+      }
+    }
+
+    const oldestPending = await db
+      .prepare("SELECT MIN(datetime(next_attempt_at)) AS oldest FROM farm_sales_sync_outbox WHERE status = 'queued'")
+      .first<{ oldest: string | null }>();
+    const oldestPendingSeconds = oldestPending?.oldest
+      ? Math.max(0, Math.floor((Date.now() - new Date(oldestPending.oldest).getTime()) / 1000))
+      : null;
+
+    await completeJobRun(db, jobRun, { dueCount: rows.length, sent, failed, blocked: 0, configReady: true }, oldestPendingSeconds, errorCodes.size ? Array.from(errorCodes).join(",") : null);
+
+    return Response.json({
+      mode: "processing",
+      dueCount: rows.length,
+      sent, failed,
+      runId,
+    });
+  } catch (error) {
+    await failJobRun(db, jobRun, { dueCount, sent, failed, blocked: 0 }, Array.from(errorCodes).join(",") || null);
+    throw error;
   }
-
-  const oldestPending = await db
-    .prepare("SELECT MIN(datetime(next_attempt_at)) AS oldest FROM farm_sales_sync_outbox WHERE status = 'queued'")
-    .first<{ oldest: string | null }>();
-  const oldestPendingSeconds = oldestPending?.oldest
-    ? Math.max(0, Math.floor((Date.now() - new Date(oldestPending.oldest).getTime()) / 1000))
-    : null;
-
-  await completeJobRun(db, runId, { dueCount: rows.length, sent, failed, blocked: 0 }, oldestPendingSeconds, errorCodes.size ? Array.from(errorCodes).join(",") : null);
-
-  return Response.json({
-    mode: "processing",
-    dueCount: rows.length,
-    sent, failed,
-    runId,
-  });
 }

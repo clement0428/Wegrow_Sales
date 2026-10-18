@@ -499,14 +499,14 @@ function PrepView({ role }: { role: StaffRole }) {
 }
 
 type JobRun = {
-  id: string; triggerSource: string; startedAt: string; completedAt: string | null;
+  id: string; recordKind: "hourly_summary" | "legacy_run"; triggerSource: string; startedAt: string; completedAt: string | null;
   dueCount: number; sentCount: number; failedCount: number; blockedCount: number;
   oldestPendingSeconds: number | null; errorSummary: string | null;
 };
 type JobStatus = {
-  jobName: string; lastRunAt: string | null; lastRunTriggerSource: string | null; lastRunCompletedAt: string | null;
+  jobName: string; lastCronObservedAt: string | null; lastRunAt: string | null; lastRunTriggerSource: string | null; lastRunCompletedAt: string | null;
   oldestPendingSeconds: number | null; deadLetterCount: number; recentRuns: JobRun[];
-  alerts: { heartbeatMissed: boolean; backlogTooOld: boolean; hasCredentialErrors: boolean; hasDeadLetters: boolean; thresholds: { heartbeatMissedMinutes: number; backlogTooOldSeconds: number } };
+  alerts: { heartbeatMissed: boolean; backlogTooOld: boolean; hasCredentialErrors: boolean; hasExecutionErrors: boolean; hasDeadLetters: boolean; thresholds: { heartbeatMissedMinutes: number; backlogTooOldSeconds: number } };
 };
 
 const dateTimeFmt = new Intl.DateTimeFormat("zh-TW", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit", hour12: false, timeZone: "Asia/Taipei" });
@@ -524,7 +524,7 @@ function JobStatusCard({ status, onRetried }: { status: JobStatus; onRetried: ()
     }
   }
   const label = status.jobName === "reminders" ? "LINE 提醒" : "Sales 同步";
-  const anyAlert = status.alerts.heartbeatMissed || status.alerts.backlogTooOld || status.alerts.hasCredentialErrors || status.alerts.hasDeadLetters;
+  const anyAlert = status.alerts.heartbeatMissed || status.alerts.backlogTooOld || status.alerts.hasCredentialErrors || status.alerts.hasExecutionErrors || status.alerts.hasDeadLetters;
   return (
     <div className="job-status-card">
       <div className="job-status-head">
@@ -532,26 +532,28 @@ function JobStatusCard({ status, onRetried }: { status: JobStatus; onRetried: ()
         {anyAlert ? <span className="job-alert-pill alert"><AlertTriangle size={12} /> 需注意</span> : <span className="job-alert-pill ok"><CheckCircle2 size={12} /> 正常</span>}
       </div>
       <div className="job-status-grid">
-        <span>最後啟動</span><span>{status.lastRunAt ? `${dateTimeFmt.format(new Date(status.lastRunAt))}（${status.lastRunTriggerSource === "cron" ? "排程" : "手動"}）` : "尚未啟動過"}</span>
+        <span>排程最後確認</span><span>{status.lastCronObservedAt ? dateTimeFmt.format(new Date(status.lastCronObservedAt)) : "尚無排程完成紀錄"}</span>
         <span>最舊積壓</span><span>{status.oldestPendingSeconds === null ? "無積壓" : `${Math.round(status.oldestPendingSeconds / 60)} 分鐘`}</span>
         <span>需人工處理</span><span>{status.deadLetterCount} 筆{status.deadLetterCount > 0 && <button className="secondary-button" disabled={retrying} onClick={retryFailed}>{retrying ? "重試中…" : "全部重試"}</button>}</span>
       </div>
-      {status.alerts.heartbeatMissed && <div className="job-alert-line">⚠ 超過 {status.alerts.thresholds.heartbeatMissedMinutes} 分鐘沒有任何一次啟動紀錄（排程可能沒有正確觸發）</div>}
+      {status.alerts.heartbeatMissed && <div className="job-alert-line">⚠ 超過 {status.alerts.thresholds.heartbeatMissedMinutes} 分鐘沒有排程完成快照（每小時記錄，請檢查排程或記錄寫入）</div>}
       {status.alerts.backlogTooOld && <div className="job-alert-line">⚠ 最舊待處理事件已等待超過 {Math.round(status.alerts.thresholds.backlogTooOldSeconds / 60)} 分鐘</div>}
-      {status.alerts.hasCredentialErrors && <div className="job-alert-line">⚠ 最近有憑證相關錯誤，需要人工確認</div>}
+      {status.alerts.hasExecutionErrors && <div className="job-alert-line">⚠ 最近有工作執行錯誤，請檢查 Workers 記錄與待處理項目</div>}
+      {status.alerts.hasCredentialErrors && <div className="job-alert-line">⚠ 最近有憑證或連線設定問題，需要人工確認</div>}
       <table className="job-runs-table">
-        <thead><tr><th>時間</th><th>來源</th><th>應處理</th><th>成功</th><th>失敗</th><th>阻塞</th></tr></thead>
+        <thead><tr><th>時段／時間</th><th>來源／類型</th><th>待處理峰值*</th><th>成功</th><th>失敗</th><th>阻塞</th></tr></thead>
         <tbody>
           {status.recentRuns.length === 0 && <tr><td colSpan={6}>尚無執行紀錄</td></tr>}
           {status.recentRuns.map((r) => (
             <tr key={r.id}>
               <td>{dateTimeFmt.format(new Date(r.startedAt))}</td>
-              <td>{r.triggerSource === "cron" ? "排程" : "手動"}</td>
+              <td>{r.triggerSource === "cron" ? "排程" : "手動"}／{r.recordKind === "hourly_summary" ? "小時摘要" : "舊單次"}</td>
               <td>{r.dueCount}</td><td>{r.sentCount}</td><td>{r.failedCount}</td><td>{r.blockedCount}</td>
             </tr>
           ))}
         </tbody>
       </table>
+      <p>* 小時摘要為待處理峰值與實際處理結果累計；舊單次列為該次待處理數。空跑只留每小時快照，不代表每分鐘監測。</p>
     </div>
   );
 }
@@ -580,7 +582,7 @@ function JobStatusPanel() {
 
   return (
     <div className="admin-section job-status-panel">
-      <div className="admin-section-title"><div><h2>排程與同步狀態</h2><p>LINE 提醒與 Sales 同步 job 的最近啟動、積壓與失敗紀錄——不是只在開發終端印 log。</p></div>
+      <div className="admin-section-title"><div><h2>排程與同步狀態</h2><p>LINE 提醒與 Sales 同步的每小時執行快照、實際處理累計與目前積壓。手動執行不會刷新排程健康狀態。</p></div>
         <button className="secondary-button" onClick={retry}><RefreshCw /> 重新整理</button>
       </div>
       {state === "loading" && <div className="empty-admin"><RefreshCw className="spin" /><strong>載入中…</strong></div>}
