@@ -13,6 +13,8 @@ The reminders, sales-sync and madou-group consumers keep their existing polling 
 - Counters use atomic SQL updates. Late empty completions cannot overwrite active work. Snapshot times cannot regress, and an invocation that began before a failure cannot clear it by finishing later.
 - Summary error codes are allowlisted; no raw exception, recipient, booking payload, token or message text is added to these logs.
 
+Upstream Madou reconciliation still runs after digest queuing and before the delivery-credentials guard. Its `recovered` field counts candidates/attempts, not actual inserts. Candidate-bearing checks emit bounded `farm_job_reconciliation_checked` diagnostics; these counts do not trigger summary writes or inflate `otherChanges`. Reconciliation queue-write totals are not represented in hourly counters; durable outbox records and D1 usage remain the evidence for those writes. Reconciliation exceptions still propagate and create a safe failure summary.
+
 There is no schema migration, historical rewrite, retention DELETE, cron configuration change, or new per-minute persistent counter.
 
 ## Admin health semantics
@@ -25,7 +27,7 @@ The newest cron lookup uses the existing `(job_name, started_at)` index, then se
 
 ## Write budget: model, not measured production usage
 
-This patch is based on upstream `6009ec5143b1cf1c93f6240c5d8ecee3b489afd3`, including its session-bound eligibility and idempotent retry fixes. It preserves the missing-configuration guards from `4d69464`, past-visit reminder cancellation, pending Madou work cards, and the due index added by `13cd07d`. The new upstream guards prevent outbox-row attempts when configuration is absent, but upstream still inserts and completes a job log on every invocation, so hourly logging remains complementary.
+This patch is based on upstream `8cb3ede4a6fbe4106f9b1b4d8b7b0826922cd98f`, including its session-bound eligibility, idempotent retry, persisted booking draft and state-aware outbox recovery fixes. It preserves the missing-configuration guards from `4d69464`, past-visit reminder cancellation, pending Madou work cards, and the due index added by `13cd07d`. The new upstream guards prevent outbox-row attempts when configuration is absent, but upstream still inserts and completes a job log on every invocation, so hourly logging remains complementary.
 
 A separate report says the deployed cron cadence was changed to every 15 minutes; this has not been independently verified from Cloudflare. This patch does not change any cadence. Use the appropriate scenario after checking the live schedule.
 

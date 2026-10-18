@@ -9,6 +9,7 @@ import { buildQueueMadouWebhookResultStatement, queueDailyDigestIfDue, type Mado
 import { MAX_SEND_ATTEMPTS, nextAttemptDelayMinutes, sendLinePushMessage, type LineMessage } from "@/lib/line/messaging";
 import { processMadouPostbackAction, type MadouPostbackAction } from "@/lib/line/madou-webhook-process";
 import { isSupersededWorkCard, type CurrentBookingState } from "@/lib/farm/madou-work-card-staleness";
+import { reconcileMissingWorkCards } from "@/lib/farm/booking-side-effects";
 import { claimRow } from "@/lib/outbox/claim";
 import { startJobRun, completeJobRun, failJobRun } from "@/lib/outbox/job-run";
 
@@ -140,6 +141,19 @@ export async function POST(request: Request) {
 
     digestQueued = await queueDailyDigestIfDue(db, now);
 
+    // Preserve upstream recovery before the credentials guard: queue repair
+    // must run even when delivery credentials are unavailable. Its upstream
+    // recovered count is a candidate/attempt count, not D1 changed rows.
+    // Do not turn it into otherChanges and reintroduce idle summary writes.
+    const reconciled = await reconcileMissingWorkCards(db);
+    if (reconciled.scanned > 0) {
+      console.info(JSON.stringify({
+        event: "farm_job_reconciliation_checked", job: "madou-group",
+        runId, source: triggerSource, candidateCount: reconciled.scanned,
+        reportedRecoveryAttempts: reconciled.recovered,
+      }));
+    }
+
     // 2026-10-17審查發現的同一類D1額度問題（同reminders/sales-sync）：下面這段
     // !groupId／!accessToken檢查原本寫在per-row迴圈「裡面」，代表即使一開始就
     // 知道這兩個設定缺一，還是會把所有due的line_group通知逐筆claim+UPDATE
@@ -153,7 +167,7 @@ export async function POST(request: Request) {
       await completeJobRun(db, jobRun, { dueCount, sent: 0, failed: 0, blocked: 0, otherChanges: Number(digestQueued) + webhookClaimed }, null, Array.from(errorCodes).join(","));
       return Response.json({
         mode: "credentials_not_configured",
-        digestQueued, dueCount: 0, sent: 0, superseded: 0, blockedNoCredentials: 0, blockedNoGroup: 0, failed: 0,
+        digestQueued, reconciled, dueCount: 0, sent: 0, superseded: 0, blockedNoCredentials: 0, blockedNoGroup: 0, failed: 0,
         webhookRetryDueCount: (retryDue.results ?? []).length, webhookRetried, webhookDeadLettered, webhookRetryFailed,
         runId,
       });
@@ -240,7 +254,7 @@ export async function POST(request: Request) {
 
     return Response.json({
       mode: "processing",
-      digestQueued, dueCount: rows.length, sent, superseded, failed,
+      digestQueued, reconciled, dueCount: rows.length, sent, superseded, failed,
       webhookRetryDueCount: (retryDue.results ?? []).length, webhookRetried, webhookDeadLettered, webhookRetryFailed,
       runId,
     });

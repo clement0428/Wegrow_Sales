@@ -1,5 +1,8 @@
+import { timingSafeEqual } from "node:crypto";
 import { z } from "zod";
 import { canCheckIn, isAdmin, requireStaff } from "@/lib/auth/current-member";
+import type { Member } from "@/lib/db/types";
+import type { StaffRole } from "@/lib/auth/roles";
 import { getDb } from "@/lib/db/client";
 import { newId } from "@/lib/db/uuid";
 import { confirmBooking } from "@/lib/farm/confirm-booking";
@@ -10,6 +13,31 @@ const bodySchema = z.object({
   action: z.enum(["confirm", "cancel", "check_in", "complete"]),
   reason: z.string().trim().max(500).optional().default(""),
 });
+
+function sameSecret(actual: string, expected: string): boolean {
+  const a = Buffer.from(actual);
+  const b = Buffer.from(expected);
+  return a.length === b.length && timingSafeEqual(a, b);
+}
+
+type Actor = { type: "staff"; member: Member & { role: StaffRole } } | { type: "service" };
+
+// 2026-10-18新增：service secret只開放給"cancel"這一個動作——這是給沒有真人
+// 員工LINE session可用時（受控的自動化驗收、緊急維運）的窄範圍授權，不是一般
+// 管理員登入的替代品，也刻意不開放confirm/check_in/complete這些需要真人在場
+// 判斷的動作。稽核紀錄actor_type寫'service'，不冒用任何真人員工的身分。
+async function resolveActor(request: Request, action: string): Promise<Actor> {
+  if (action === "cancel") {
+    const authHeader = request.headers.get("authorization") ?? "";
+    const bearer = authHeader.replace(/^Bearer\s+/i, "").trim();
+    const serviceSecret = process.env.FARM_BOOKING_ADMIN_SERVICE_SECRET;
+    if (serviceSecret && bearer && sameSecret(bearer, serviceSecret)) {
+      return { type: "service" };
+    }
+  }
+  const member = await requireStaff();
+  return { type: "staff", member };
+}
 
 // Each action's atomic precondition, enforced in the UPDATE's WHERE clause
 // (not "read state, then decide, then write") so two concurrent admin
@@ -44,22 +72,28 @@ const TRANSITIONS: Record<string, { set: string; where: string; from: string; to
 };
 
 export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
-  const member = await requireStaff();
   const { id } = await params;
   const parsed = bodySchema.safeParse(await request.json().catch(() => null));
   if (!parsed.success) return Response.json({ error: "請求格式錯誤" }, { status: 400 });
   const { action, reason } = parsed.data;
 
+  const actor = await resolveActor(request, action);
+
   // 接待員只能「報到」（規格第4節：接待員可讀所需資訊、報到與工作單）；
   // confirm／cancel／complete 影響容量或退款層級的決定，僅限管理員。
-  const allowed = action === "check_in" ? canCheckIn(member) : isAdmin(member);
-  if (!allowed) return Response.json({ error: "此角色無法執行這個動作" }, { status: 403 });
+  // service帳號只走得到這裡時action必定是'cancel'（resolveActor已經限制），
+  // 不需要另外跑角色檢查——secret本身就是授權邊界。
+  if (actor.type === "staff") {
+    const allowed = action === "check_in" ? canCheckIn(actor.member) : isAdmin(actor.member);
+    if (!allowed) return Response.json({ error: "此角色無法執行這個動作" }, { status: 403 });
+  }
 
   const db = await getDb();
   const now = new Date().toISOString();
 
   if (action === "confirm") {
-    const result = await confirmBooking(db, id, "staff", member.id);
+    if (actor.type !== "staff") return Response.json({ error: "此角色無法執行這個動作" }, { status: 403 });
+    const result = await confirmBooking(db, id, "staff", actor.member.id);
     if (!result.ok) {
       const status = result.reason === "not_found" ? 404 : 409;
       const error = result.reason === "not_found"
@@ -118,9 +152,12 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
   await db
     .prepare(
       `INSERT INTO farm_audit_log (id, entity_type, entity_id, actor_type, actor_id, action, from_state, to_state, reason, created_at)
-       VALUES (?, 'farm_booking', ?, 'staff', ?, ?, ?, ?, ?, ?)`,
+       VALUES (?, 'farm_booking', ?, ?, ?, ?, ?, ?, ?, ?)`,
     )
-    .bind(newId(), id, member.id, action, transition.from === "*" ? before.booking_status : transition.from, transition.to, reason, now)
+    .bind(
+      newId(), id, actor.type, actor.type === "staff" ? actor.member.id : null, action,
+      transition.from === "*" ? before.booking_status : transition.from, transition.to, reason, now,
+    )
     .run();
 
   if (action === "cancel") {

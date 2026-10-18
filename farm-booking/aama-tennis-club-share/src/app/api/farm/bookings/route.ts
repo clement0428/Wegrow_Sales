@@ -6,11 +6,10 @@ import { calculateVisitPrice } from "@/lib/farm/pricing";
 import { findBooking, listMemberBookings } from "@/lib/farm/repository";
 import { getCurrentMember } from "@/lib/auth/current-member";
 import { isAllowedBookingSlot, ticketRateBpsForSlot } from "@/lib/farm/visit-policy";
-import { queueSalesSyncEvent } from "@/lib/sales/queue";
 import { redeemAdoptionEligibilityNonce } from "@/lib/farm/adoption-eligibility";
 import { ELIGIBILITY_SESSION_COOKIE, checkEligibilitySession, markEligibilitySessionUsed } from "@/lib/farm/eligibility-session";
 import { taipeiDateIso } from "@/lib/farm/taipei-date";
-import { queueMadouWorkCard } from "@/lib/line/madou-group-queue";
+import { ensureBookingSideEffectsQueued } from "@/lib/farm/booking-side-effects";
 
 // Orbit那端回的reason要分成兩類給客戶看：一類是「這次驗證session本身失效了」
 // （過期、被用過、日期對不上、根本找不到）——這些都該導回「請重新驗證」而不是
@@ -76,12 +75,16 @@ export async function POST(request: Request) {
   // 狀態；如果key相符但擁有者對不上（猜測/盜用key的情況），不能把別人的預約資料
   // 原封不動回傳——回409請對方重新送出，不當成「這就是你的預約」直接洩漏。
   const prior = await db.prepare(
-    "SELECT contact_phone, lookup_code, customer_member_id FROM farm_bookings WHERE idempotency_key = ?",
-  ).bind(input.idempotencyKey).first<{ contact_phone: string; lookup_code: string; customer_member_id: string | null }>();
+    "SELECT id, contact_phone, lookup_code, customer_member_id FROM farm_bookings WHERE idempotency_key = ?",
+  ).bind(input.idempotencyKey).first<{ id: string; contact_phone: string; lookup_code: string; customer_member_id: string | null }>();
   if (prior) {
     if (prior.customer_member_id !== (member?.id ?? null)) {
       return Response.json({ error: "這個預約代碼無法驗證擁有者，請重新送出預約。", code: "idempotency_owner_mismatch" }, { status: 409 });
     }
+    // 重試這把idempotencyKey時，補跑一次worker/outbox寫入——冪等設計保證已經
+    // 成功過的部分不會被重複建立，真正漏掉的部分（上一次INSERT成功後、回應
+    // 送達前死掉）才會被補上。見ensureBookingSideEffectsQueued()的說明。
+    await ensureBookingSideEffectsQueued(db, prior.id, input.eligibilityNonce, input.idempotencyKey);
     const existing = await findBooking(prior.contact_phone, prior.lookup_code);
     return Response.json({ booking: existing, duplicate: true });
   }
@@ -250,13 +253,13 @@ export async function POST(request: Request) {
     // 跟頂部一樣的擁有者核對再回傳既有預約，而不是讓它變成未處理的500。
     if (message.includes("UNIQUE constraint failed") && message.includes("idempotency_key")) {
       const dup = await db.prepare(
-        "SELECT contact_phone, lookup_code, customer_member_id FROM farm_bookings WHERE idempotency_key = ?",
-      ).bind(input.idempotencyKey).first<{ contact_phone: string; lookup_code: string; customer_member_id: string | null }>();
+        "SELECT id, contact_phone, lookup_code, customer_member_id FROM farm_bookings WHERE idempotency_key = ?",
+      ).bind(input.idempotencyKey).first<{ id: string; contact_phone: string; lookup_code: string; customer_member_id: string | null }>();
       if (dup) {
         if (dup.customer_member_id !== (member?.id ?? null)) {
           return Response.json({ error: "這個預約代碼無法驗證擁有者，請重新送出預約。", code: "idempotency_owner_mismatch" }, { status: 409 });
         }
-        if (input.eligibilityNonce) await markEligibilitySessionUsed(db, input.eligibilityNonce, input.idempotencyKey).catch(() => {});
+        await ensureBookingSideEffectsQueued(db, dup.id, input.eligibilityNonce, input.idempotencyKey);
         const existingBooking = await findBooking(dup.contact_phone, dup.lookup_code);
         return Response.json({ booking: existingBooking, duplicate: true });
       }
@@ -271,28 +274,12 @@ export async function POST(request: Request) {
     }, { status: 409 });
   }
 
-  // 免費資格要在booking真正建立成功之後才標記成「已使用」（見checkEligibilitySession/
-  // markEligibilitySessionUsed的註解）——redeem成功但這裡capacity_changed/上面
-  // 例外失敗的話，不會卡死這個nonce，同一個idempotencyKey retry還能正常走一次。
-  if (isAdoptionFreeVisit && input.eligibilityNonce) {
-    await markEligibilitySessionUsed(db, input.eligibilityNonce, input.idempotencyKey);
-  }
-
-  await queueSalesSyncEvent(db, id, "booking_created");
-  // 2026-10-17審查：待接待預約一建立就要讓現場看到，不能等admin明確confirm才發卡
-  // ——否則是「先確認才發卡」的循環。visit_version在這個時間點就是初始值1（booking
-  // 剛建立，從未改期過）。
-  await queueMadouWorkCard(db, 1, {
-    eventKind: "pending",
-    visitVersion: 1,
-    booking: {
-      bookingId: id, bookingNumber: number, groupName: input.groupName || null,
-      experience: slot.experience_name, startsAt: slot.starts_at, endsAt: slot.ends_at,
-      adultCount: input.adultCount, childCount: input.childCount, infantCount: input.infantCount,
-      totalPeople, plantCount: input.plantCount, mealCount: input.mealCount,
-      vegetarianMealCount: input.vegetarianMealCount,
-    },
-  });
+  // 免費資格要在booking真正建立成功之後才標記成「已使用」，工作卡/Sales同步也
+  // 在這裡才入列——這三件事跟上面的INSERT不是同一個D1交易，如果這中間任何一步
+  // 失敗，客戶重新整理頁面用同一把idempotencyKey重試時，上面的「prior」判斷會
+  // 呼叫同一支ensureBookingSideEffectsQueued()補齊漏掉的部分（冪等設計，不會
+  // 重複建立）。
+  await ensureBookingSideEffectsQueued(db, id, input.eligibilityNonce, input.idempotencyKey);
 
   const booking = await findBooking(input.phone, code);
   return Response.json({

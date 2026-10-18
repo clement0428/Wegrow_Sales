@@ -16,6 +16,7 @@ import {
 } from "@/lib/farm/pricing";
 import FarmDateCalendar from "./FarmDateCalendar";
 import { ORDER_STEPS, stepIndexOf, type StatusBucket } from "@/lib/farm/status";
+import { clearBookingDraft, restoreBookingDraft, saveBookingDraft } from "@/lib/farm/booking-draft";
 
 export type FarmView = "booking" | "mine" | "info" | "contact";
 
@@ -65,25 +66,39 @@ type EligibilityState =
 
 const ELIGIBILITY_STORAGE_KEY = "tc-eligibility-state";
 
+// 2026-10-18審查修正：原本只有"confirmed"會寫入sessionStorage，其餘狀態
+// （包含"unavailable"/"stale"/"not_eligible"）一律清空儲存——代表客戶遇到503
+// 之後重新整理頁面，畫面會靜默變回"none"（完全沒驗證過的狀態），submitBooking()
+// 的擋付費邏輯只檔unavailable/stale，"none"不會被擋，等於重新整理就能繞過
+// 「只有明確選擇改為付費才能送出」這條規則。免費意圖本身（不只是確認成功的
+// 那個nonce）要能跨重新整理存活，必須明確呼叫switchToPaidBooking()才能清除。
+const PERSISTABLE_ELIGIBILITY_STATUSES = new Set(["confirmed", "unavailable", "stale", "not_eligible"]);
+
 function persistEligibility(state: EligibilityState) {
   try {
-    if (state.status === "confirmed") sessionStorage.setItem(ELIGIBILITY_STORAGE_KEY, JSON.stringify(state));
+    if (PERSISTABLE_ELIGIBILITY_STATUSES.has(state.status)) sessionStorage.setItem(ELIGIBILITY_STORAGE_KEY, JSON.stringify(state));
     else sessionStorage.removeItem(ELIGIBILITY_STORAGE_KEY);
   } catch { /* sessionStorage不可用（隱私模式等）就放棄持久化，不影響本次流程 */ }
 }
 
-// 回跳與重新整理不能無提示丟失已確認的免費資格——React state在整頁重新整理後
-// 會清空，這裡用sessionStorage補回來；如果存的是已經過期的nonce，回傳"stale"而
-// 不是靜默當作"none"，讓畫面能明確告知「先前的驗證已過期，需要重新驗證」。
+// 回跳與重新整理不能無提示丟失免費意圖（不管是已確認、還是卡在unavailable/
+// stale/not_eligible 任何一種「還沒解決」的狀態）——React state在整頁重新整理
+// 後會清空，這裡用sessionStorage補回來；已確認的nonce如果存的時候還沒過期、
+// 但現在已經過期，回傳"stale"而不是靜默當作"none"，讓畫面能明確告知「先前的
+// 驗證已過期，需要重新驗證」，不能被重新整理繞過變回可以直接付費送出。
 function restoreEligibility(): EligibilityState | null {
   try {
     const raw = sessionStorage.getItem(ELIGIBILITY_STORAGE_KEY);
     if (!raw) return null;
     const parsed = JSON.parse(raw) as EligibilityState;
-    if (parsed.status !== "confirmed") return null;
-    if (new Date(parsed.expiresAt).getTime() <= Date.now()) {
-      sessionStorage.removeItem(ELIGIBILITY_STORAGE_KEY);
-      return { status: "stale" };
+    if (!PERSISTABLE_ELIGIBILITY_STATUSES.has(parsed.status)) return null;
+    if (parsed.status === "confirmed") {
+      if (new Date(parsed.expiresAt).getTime() <= Date.now()) {
+        const stale: EligibilityState = { status: "stale" };
+        sessionStorage.setItem(ELIGIBILITY_STORAGE_KEY, JSON.stringify(stale));
+        return stale;
+      }
+      return parsed;
     }
     return parsed;
   } catch {
@@ -144,6 +159,15 @@ export default function FarmBookingApp({ initialView = "booking" }: { initialVie
   const idempotencyKey = useRef("");
   const people = adult + child + infant;
 
+  // idempotencyKey要在「重新整理也保得住」的時間點就固定下來，不能像舊版一樣
+  // 等到submitBooking()第一次送出時才臨時產生——否則Orbit已經兌換成功、本機
+  // booking建立失敗、客戶重新整理頁面重試，拿到的就是全新一把key，跟原本那次
+  // 失敗的嘗試變成兩個不相干的請求，既有的redemption_id冪等重試機制完全用不上。
+  function ensureIdempotencyKey(): string {
+    if (!idempotencyKey.current) idempotencyKey.current = crypto.randomUUID();
+    return idempotencyKey.current;
+  }
+
   useEffect(() => {
     const liffId = process.env.NEXT_PUBLIC_LIFF_ID;
     if (!liffId) return;
@@ -194,11 +218,27 @@ export default function FarmBookingApp({ initialView = "booking" }: { initialVie
   // 如果不是從Orbit導回來的，改檢查sessionStorage有沒有先前確認過還沒過期的
   // 資格——重新整理頁面不該無提示把已確認的免費資格弄丟。
   useEffect(() => {
+    // 先復原重新整理前留下的booking draft（表單欄位+idempotencyKey）——不管
+    // 這次是不是從Orbit導回來的，都要先把這些欄位接回來，避免客戶重新整理後
+    // 要重填一次聯絡資料，也讓後面不管是沿用舊nonce還是走全新一輪驗證，
+    // idempotencyKey都維持同一把。
+    const draft = restoreBookingDraft();
+    if (draft) {
+      idempotencyKey.current = draft.idempotencyKey;
+      if (draft.slotId) setSlotId(draft.slotId);
+      setAdult(draft.adult); setChild(draft.child); setInfant(draft.infant);
+      setPlantCount(draft.plantCount); setMealCount(draft.mealCount); setVegetarianMealCount(draft.vegetarianMealCount);
+      setContactName(draft.contactName); setPhone(draft.phone); setGroupName(draft.groupName); setNote(draft.note);
+    }
+
     const params = new URLSearchParams(window.location.search);
     const nonce = params.get("eligibilityNonce");
     if (!nonce) {
+      // 不是從Orbit導回來的——檢查sessionStorage有沒有先前確認過還沒過期的
+      // 免費資格（重新整理頁面不該無提示把已確認的免費資格弄丟）。
       const restored = restoreEligibility();
       if (restored) setEligibility(restored);
+      if (draft?.slotId) setStep(3);
       return;
     }
     const eligible = params.get("eligible");
@@ -224,9 +264,28 @@ export default function FarmBookingApp({ initialView = "booking" }: { initialVie
     window.history.replaceState(null, "", window.location.pathname);
   }, []);
 
+  // 任何時候slotId存在（代表至少已經到過step 2），就持續把目前表單狀態存成
+  // draft——重新整理頁面、或離開去Orbit登入再回來，都能接得回來。
+  useEffect(() => {
+    if (!slotId) return;
+    saveBookingDraft({
+      idempotencyKey: ensureIdempotencyKey(),
+      slotId, adult, child, infant, plantCount, mealCount, vegetarianMealCount,
+      contactName, phone, groupName, note,
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [slotId, adult, child, infant, plantCount, mealCount, vegetarianMealCount, contactName, phone, groupName, note]);
+
   async function startEligibilityClaim() {
     if (!slotId) return;
     setEligibility({ status: "pending" });
+    // 離開去Orbit登入之前先確保idempotencyKey+draft都存好——回來後（或中途
+    // 重新整理）才能沿用同一把key，不會變成另一次不相干的booking嘗試。
+    saveBookingDraft({
+      idempotencyKey: ensureIdempotencyKey(),
+      slotId, adult, child, infant, plantCount, mealCount, vegetarianMealCount,
+      contactName, phone, groupName, note,
+    });
     try {
       const response = await fetch("/api/farm/eligibility/start", {
         method: "POST",
@@ -242,6 +301,13 @@ export default function FarmBookingApp({ initialView = "booking" }: { initialVie
     } catch {
       setEligibility({ status: "unavailable" });
     }
+  }
+
+  // 只有客戶明確點「改為一般付費預約」才能移除免費意圖——503/逾時/過期這幾種
+  // 狀態都不能自動滑進付費送出，必須是這個函式被呼叫才算數。
+  function switchToPaidBooking() {
+    setEligibility({ status: "none" });
+    persistEligibility({ status: "none" });
   }
 
   useEffect(() => {
@@ -281,6 +347,10 @@ export default function FarmBookingApp({ initialView = "booking" }: { initialVie
   // 免費成立後要把票價、付款區、付費加購都藏起來——這幾項金額本來就會被後端
   // 強制清成0，畫面卻還留著門票單價/付款選項會讓客戶誤以為仍要付款或可以加購。
   const isFreeConfirmed = eligibility.status === "confirmed";
+  // 免費意圖還沒解決（服務打不通／session過期／核對過不符合資格）都要擋付費
+  // 送出——不能讓客戶在任何一種「未解決」狀態下悄悄送出一般計價預約，必須
+  // 回上一步重新驗證，或明確按「改為一般付費預約」（switchToPaidBooking()）。
+  const isEligibilityBlocking = eligibility.status === "unavailable" || eligibility.status === "stale" || eligibility.status === "not_eligible";
 
   function changeCount(kind: "adult" | "child" | "infant", delta: number) {
     const values = { adult, child, infant };
@@ -304,7 +374,11 @@ export default function FarmBookingApp({ initialView = "booking" }: { initialVie
 
   async function submitBooking() {
     if (!selectedSlot) return;
-    if (!idempotencyKey.current) idempotencyKey.current = crypto.randomUUID();
+    // 503／逾時／資格過期都不能自動滑進一般付費送出——這幾種狀態下擋住送出，
+    // 必須回上一步明確重新驗證或按「改為一般付費預約」才能繼續（見
+    // switchToPaidBooking()）。
+    if (isEligibilityBlocking) return;
+    const key = ensureIdempotencyKey();
     setCheckout({ status: "loading" });
     try {
       const response = await fetch("/api/farm/bookings", {
@@ -322,7 +396,7 @@ export default function FarmBookingApp({ initialView = "booking" }: { initialVie
           phone: phone.replace(/\D/g, ""),
           groupName,
           note,
-          idempotencyKey: idempotencyKey.current,
+          idempotencyKey: key,
           ...(eligibility.status === "confirmed" ? { eligibilityNonce: eligibility.nonce } : {}),
         }),
       });
@@ -344,6 +418,7 @@ export default function FarmBookingApp({ initialView = "booking" }: { initialVie
         setCheckout({ status: "blocked", message: result.error || "無法建立預約，請重新確認場次。" });
         return;
       }
+      clearBookingDraft();
       setCheckout({
         status: "reserved",
         bookingNumber: result.booking.bookingNumber,
@@ -493,13 +568,33 @@ export default function FarmBookingApp({ initialView = "booking" }: { initialVie
                   {eligibility.status === "pending" && <div className="loading-state"><LoaderCircle /> 正在前往 WeGrow Orbit 登入…</div>}
                   {eligibility.status === "confirmed" && <div className="blocked-result success-result"><Check /><div><strong>已確認免費參訪資格</strong><p>這次參訪將不收取門票費用。</p></div></div>}
                   {eligibility.status === "unavailable" && (
-                    <div className="blocked-result"><ShieldCheck /><div><strong>免費資格驗證暫時無法使用</strong><p>服務本身連線異常，不代表您的資格未通過——可稍後再試，或改用一般付費預約，也可聯繫威果官方 LINE 協助確認。</p></div></div>
+                    <div className="blocked-result"><ShieldCheck /><div>
+                      <strong>免費資格驗證暫時無法使用</strong>
+                      <p>服務本身連線異常，不代表您的資格未通過——這筆預約暫時無法送出，可稍後重新驗證，或改用一般付費預約，也可聯繫威果官方 LINE 協助確認。</p>
+                      <div className="eligibility-actions">
+                        <button type="button" className="secondary-button" onClick={startEligibilityClaim}><ShieldCheck /> 重新驗證</button>
+                        <button type="button" className="secondary-button" onClick={switchToPaidBooking}>改為一般付費預約</button>
+                      </div>
+                    </div></div>
                   )}
                   {eligibility.status === "stale" && (
-                    <div className="blocked-result"><ShieldCheck /><div><strong>免費參訪資格驗證已過期或已使用</strong><p>請重新登入認養企業帳號再驗證一次。</p><button type="button" className="secondary-button" onClick={startEligibilityClaim}><ShieldCheck /> 重新驗證</button></div></div>
+                    <div className="blocked-result"><ShieldCheck /><div>
+                      <strong>免費參訪資格驗證已過期或已使用</strong>
+                      <p>這筆預約暫時無法送出，請重新登入認養企業帳號再驗證一次，或改用一般付費預約。</p>
+                      <div className="eligibility-actions">
+                        <button type="button" className="secondary-button" onClick={startEligibilityClaim}><ShieldCheck /> 重新驗證</button>
+                        <button type="button" className="secondary-button" onClick={switchToPaidBooking}>改為一般付費預約</button>
+                      </div>
+                    </div></div>
                   )}
                   {eligibility.status === "not_eligible" && (
-                    <div className="blocked-result"><ShieldCheck /><div><strong>核對後此帳號不符合免費參訪資格</strong><p>可改用一般付費預約，或聯繫威果官方 LINE 確認合約範圍。</p></div></div>
+                    <div className="blocked-result"><ShieldCheck /><div>
+                      <strong>核對後此帳號不符合免費參訪資格</strong>
+                      <p>可改用一般付費預約，或聯繫威果官方 LINE 確認合約範圍。</p>
+                      <div className="eligibility-actions">
+                        <button type="button" className="secondary-button" onClick={switchToPaidBooking}>改為一般付費預約</button>
+                      </div>
+                    </div></div>
                   )}
                 </div>
                 {!isFreeConfirmed && (
@@ -532,7 +627,12 @@ export default function FarmBookingApp({ initialView = "booking" }: { initialVie
                 ) : (
                   <div className="price-box"><span>預約金額</span><strong>NT$ {price.totalTwd.toLocaleString()}</strong><small>門票 NT$ {price.ticketUnitPriceTwd.toLocaleString()}／人，共 NT$ {price.ticketSubtotalTwd.toLocaleString()}；本次折抵 NT$ {price.creditAppliedTwd.toLocaleString()}。目前尚未開放付款。</small></div>
                 )}
-                {checkout.status === "idle" && <button className="primary-button" onClick={submitBooking}>送出預約申請 <ArrowRight /></button>}
+                {checkout.status === "idle" && isEligibilityBlocking && (
+                  <div className="blocked-result"><ShieldCheck /><div><strong>免費參訪資格驗證尚未完成，無法送出</strong><p>請回上一步重新驗證，或明確選擇改為一般付費預約。</p><button type="button" className="secondary-button" onClick={() => setStep(3)}><ArrowLeft /> 回上一步處理</button></div></div>
+                )}
+                {checkout.status === "idle" && !isEligibilityBlocking && (
+                  <button className="primary-button" onClick={submitBooking}>送出預約申請 <ArrowRight /></button>
+                )}
                 {checkout.status === "loading" && <button className="primary-button" disabled><LoaderCircle /> 正在保留名額…</button>}
                 {checkout.status === "blocked" && <div className="blocked-result"><ShieldCheck /><div><strong>這次沒有建立預約</strong><p>{checkout.message}</p><span>沒有扣款。請回到時段重新選擇，或聯繫農場。</span></div></div>}
                 {checkout.status === "reserved" && <>

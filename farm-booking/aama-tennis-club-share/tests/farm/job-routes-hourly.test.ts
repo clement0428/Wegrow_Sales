@@ -12,6 +12,7 @@ const mocks = vi.hoisted(() => ({
   sendLinePushMessage: vi.fn(),
   sendSalesSync: vi.fn(),
   queueDailyDigestIfDue: vi.fn(),
+  reconcileMissingWorkCards: vi.fn(),
   buildQueueMadouWebhookResultStatement: vi.fn(),
   processMadouPostbackAction: vi.fn(),
 }));
@@ -29,6 +30,7 @@ vi.mock("@/lib/line/madou-group-queue", () => ({
   queueDailyDigestIfDue: mocks.queueDailyDigestIfDue,
   buildQueueMadouWebhookResultStatement: mocks.buildQueueMadouWebhookResultStatement,
 }));
+vi.mock("@/lib/farm/booking-side-effects", () => ({ reconcileMissingWorkCards: mocks.reconcileMissingWorkCards }));
 vi.mock("@/lib/line/madou-webhook-process", () => ({
   processMadouPostbackAction: mocks.processMadouPostbackAction,
 }));
@@ -197,6 +199,7 @@ beforeEach(() => {
   mocks.sendLinePushMessage.mockResolvedValue({ ok: true });
   mocks.sendSalesSync.mockResolvedValue({ ok: true });
   mocks.queueDailyDigestIfDue.mockResolvedValue(false);
+  mocks.reconcileMissingWorkCards.mockResolvedValue({ scanned: 0, recovered: 0 });
   mocks.processMadouPostbackAction.mockResolvedValue({ replyText: "Test retry result" });
   mocks.buildQueueMadouWebhookResultStatement.mockImplementation((db: D1Database, eventId: string, text: string) =>
     db.prepare("INSERT INTO farm_notification_outbox (id, content_snapshot_json) VALUES (?, ?)").bind(`result:${eventId}`, text),
@@ -377,6 +380,8 @@ describe("missing configuration guards", () => {
       ]);
       expect(database.executed.some((statement) => statement.sql.includes("farm_notification_outbox"))).toBe(false);
       expect(mocks.queueDailyDigestIfDue).toHaveBeenCalledWith(database.db, new Date("2026-10-17T07:10:00.000Z"));
+      expect(mocks.reconcileMissingWorkCards).toHaveBeenCalledWith(database.db);
+      expect(mocks.queueDailyDigestIfDue.mock.invocationCallOrder[0]).toBeLessThan(mocks.reconcileMissingWorkCards.mock.invocationCallOrder[0]);
       expect(mocks.claimRow).not.toHaveBeenCalled();
       expect(mocks.sendLinePushMessage).not.toHaveBeenCalled();
       expect(database.writes().every((statement) => statement.sql.includes("farm_job_runs"))).toBe(true);
@@ -608,5 +613,82 @@ describe("Madou phase 0 webhook retry activity", () => {
     expectActivitySummary(database, 3);
     expect(completionEvents()[0]).toMatchObject({ dueCount: 2, source: "manual" });
     expect(database.summaryWrites()[0].values[0]).toBe(`${HOURLY_JOB_RUN_PREFIX}madou-group:manual:2026-10-17T07:00:00.000Z`);
+  });
+});
+
+describe("upstream Madou reconciliation integration", () => {
+  it.each([true, false])("preserves repair before the delivery guard when configured=%s", async (configured) => {
+    const database = createDb();
+    if (!configured) mocks.env.LINE_MESSAGING_ACCESS_TOKEN = "";
+    mocks.reconcileMissingWorkCards.mockResolvedValue({ scanned: 20, recovered: 20 });
+
+    const response = await madouGroup(request());
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({
+      mode: configured ? "processing" : "credentials_not_configured",
+      reconciled: { scanned: 20, recovered: 20 }, dueCount: 0, sent: 0,
+    });
+    expect(mocks.reconcileMissingWorkCards).toHaveBeenCalledWith(database.db);
+    expect(mocks.queueDailyDigestIfDue.mock.invocationCallOrder[0]).toBeLessThan(mocks.reconcileMissingWorkCards.mock.invocationCallOrder[0]);
+    expect(mocks.sendLinePushMessage).not.toHaveBeenCalled();
+    expect(completionEvents()[0].otherChanges).toBe(0);
+    expect(completionEvents()[0].configReady ?? false).toBe(configured);
+    const diagnostic = vi.mocked(console.info).mock.calls.map(([value]) => JSON.parse(String(value)))
+      .find((event) => event.event === "farm_job_reconciliation_checked");
+    expect(diagnostic).toEqual({
+      event: "farm_job_reconciliation_checked", job: "madou-group", runId: expect.any(String),
+      source: "cron", candidateCount: 20, reportedRecoveryAttempts: 20,
+    });
+    // Missing-config error persistence is separately guarded; candidate counts
+    // never become a success counter or actual D1 mutation estimate.
+    if (configured) expect(database.writes()).toEqual([]);
+  });
+
+  it("does not write another summary for repeatedly scanned reconciliation candidates", async () => {
+    const database = createDb();
+    mocks.reconcileMissingWorkCards.mockResolvedValue({ scanned: 20, recovered: 20 });
+
+    await madouGroup(request());
+    await madouGroup(request());
+
+    expect(mocks.reconcileMissingWorkCards).toHaveBeenCalledTimes(2);
+    expect(database.writes()).toEqual([]);
+    expect(completionEvents()).toHaveLength(2);
+    expect(completionEvents().every((event) => event.otherChanges === 0 && event.sent === 0)).toBe(true);
+  });
+
+  it("adds no reconciliation diagnostic for a fully empty check", async () => {
+    const database = createDb();
+    const response = await madouGroup(request());
+
+    expect(await response.json()).toMatchObject({ reconciled: { scanned: 0, recovered: 0 } });
+    expect(database.writes()).toEqual([]);
+    expect(vi.mocked(console.info).mock.calls.map(([value]) => JSON.parse(String(value)).event))
+      .toEqual(["farm_job_completed"]);
+  });
+
+  it("keeps actual send counts independent from reported reconciliation recovery", async () => {
+    const database = createDb({ outboxRows: [groupRow] });
+    mocks.reconcileMissingWorkCards.mockResolvedValue({ scanned: 20, recovered: 20 });
+
+    const response = await madouGroup(request());
+    expect(await response.json()).toMatchObject({ sent: 1, reconciled: { scanned: 20, recovered: 20 } });
+    expect(database.summaryWrites()).toHaveLength(1);
+    expect(completionEvents()).toEqual([expect.objectContaining({ sent: 1, failed: 0, otherChanges: 0 })]);
+  });
+
+  it("preserves webhook and digest progress when reconciliation throws", async () => {
+    const database = createDb({ retryRows: [retryRow] });
+    mocks.queueDailyDigestIfDue.mockResolvedValue(true);
+    const businessError = new Error("test reconciliation detail must not enter summary");
+    mocks.reconcileMissingWorkCards.mockRejectedValue(businessError);
+
+    await expect(madouGroup(request())).rejects.toBe(businessError);
+
+    expect(database.batches).toHaveLength(1);
+    expect(mocks.sendLinePushMessage).not.toHaveBeenCalled();
+    expectActivitySummary(database, 2, "job_execution_failed");
+    expect(completionEvents()[0].dueCount).toBe(1);
+    expect(JSON.stringify(vi.mocked(console.info).mock.calls)).not.toContain(businessError.message);
   });
 });
