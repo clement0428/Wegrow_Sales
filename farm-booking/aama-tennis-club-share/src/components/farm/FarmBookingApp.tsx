@@ -66,25 +66,39 @@ type EligibilityState =
 
 const ELIGIBILITY_STORAGE_KEY = "tc-eligibility-state";
 
+// 2026-10-18審查修正：原本只有"confirmed"會寫入sessionStorage，其餘狀態
+// （包含"unavailable"/"stale"/"not_eligible"）一律清空儲存——代表客戶遇到503
+// 之後重新整理頁面，畫面會靜默變回"none"（完全沒驗證過的狀態），submitBooking()
+// 的擋付費邏輯只檔unavailable/stale，"none"不會被擋，等於重新整理就能繞過
+// 「只有明確選擇改為付費才能送出」這條規則。免費意圖本身（不只是確認成功的
+// 那個nonce）要能跨重新整理存活，必須明確呼叫switchToPaidBooking()才能清除。
+const PERSISTABLE_ELIGIBILITY_STATUSES = new Set(["confirmed", "unavailable", "stale", "not_eligible"]);
+
 function persistEligibility(state: EligibilityState) {
   try {
-    if (state.status === "confirmed") sessionStorage.setItem(ELIGIBILITY_STORAGE_KEY, JSON.stringify(state));
+    if (PERSISTABLE_ELIGIBILITY_STATUSES.has(state.status)) sessionStorage.setItem(ELIGIBILITY_STORAGE_KEY, JSON.stringify(state));
     else sessionStorage.removeItem(ELIGIBILITY_STORAGE_KEY);
   } catch { /* sessionStorage不可用（隱私模式等）就放棄持久化，不影響本次流程 */ }
 }
 
-// 回跳與重新整理不能無提示丟失已確認的免費資格——React state在整頁重新整理後
-// 會清空，這裡用sessionStorage補回來；如果存的是已經過期的nonce，回傳"stale"而
-// 不是靜默當作"none"，讓畫面能明確告知「先前的驗證已過期，需要重新驗證」。
+// 回跳與重新整理不能無提示丟失免費意圖（不管是已確認、還是卡在unavailable/
+// stale/not_eligible 任何一種「還沒解決」的狀態）——React state在整頁重新整理
+// 後會清空，這裡用sessionStorage補回來；已確認的nonce如果存的時候還沒過期、
+// 但現在已經過期，回傳"stale"而不是靜默當作"none"，讓畫面能明確告知「先前的
+// 驗證已過期，需要重新驗證」，不能被重新整理繞過變回可以直接付費送出。
 function restoreEligibility(): EligibilityState | null {
   try {
     const raw = sessionStorage.getItem(ELIGIBILITY_STORAGE_KEY);
     if (!raw) return null;
     const parsed = JSON.parse(raw) as EligibilityState;
-    if (parsed.status !== "confirmed") return null;
-    if (new Date(parsed.expiresAt).getTime() <= Date.now()) {
-      sessionStorage.removeItem(ELIGIBILITY_STORAGE_KEY);
-      return { status: "stale" };
+    if (!PERSISTABLE_ELIGIBILITY_STATUSES.has(parsed.status)) return null;
+    if (parsed.status === "confirmed") {
+      if (new Date(parsed.expiresAt).getTime() <= Date.now()) {
+        const stale: EligibilityState = { status: "stale" };
+        sessionStorage.setItem(ELIGIBILITY_STORAGE_KEY, JSON.stringify(stale));
+        return stale;
+      }
+      return parsed;
     }
     return parsed;
   } catch {
@@ -333,6 +347,10 @@ export default function FarmBookingApp({ initialView = "booking" }: { initialVie
   // 免費成立後要把票價、付款區、付費加購都藏起來——這幾項金額本來就會被後端
   // 強制清成0，畫面卻還留著門票單價/付款選項會讓客戶誤以為仍要付款或可以加購。
   const isFreeConfirmed = eligibility.status === "confirmed";
+  // 免費意圖還沒解決（服務打不通／session過期／核對過不符合資格）都要擋付費
+  // 送出——不能讓客戶在任何一種「未解決」狀態下悄悄送出一般計價預約，必須
+  // 回上一步重新驗證，或明確按「改為一般付費預約」（switchToPaidBooking()）。
+  const isEligibilityBlocking = eligibility.status === "unavailable" || eligibility.status === "stale" || eligibility.status === "not_eligible";
 
   function changeCount(kind: "adult" | "child" | "infant", delta: number) {
     const values = { adult, child, infant };
@@ -359,7 +377,7 @@ export default function FarmBookingApp({ initialView = "booking" }: { initialVie
     // 503／逾時／資格過期都不能自動滑進一般付費送出——這幾種狀態下擋住送出，
     // 必須回上一步明確重新驗證或按「改為一般付費預約」才能繼續（見
     // switchToPaidBooking()）。
-    if (eligibility.status === "unavailable" || eligibility.status === "stale") return;
+    if (isEligibilityBlocking) return;
     const key = ensureIdempotencyKey();
     setCheckout({ status: "loading" });
     try {
@@ -609,10 +627,10 @@ export default function FarmBookingApp({ initialView = "booking" }: { initialVie
                 ) : (
                   <div className="price-box"><span>預約金額</span><strong>NT$ {price.totalTwd.toLocaleString()}</strong><small>門票 NT$ {price.ticketUnitPriceTwd.toLocaleString()}／人，共 NT$ {price.ticketSubtotalTwd.toLocaleString()}；本次折抵 NT$ {price.creditAppliedTwd.toLocaleString()}。目前尚未開放付款。</small></div>
                 )}
-                {checkout.status === "idle" && (eligibility.status === "unavailable" || eligibility.status === "stale") && (
-                  <div className="blocked-result"><ShieldCheck /><div><strong>免費參訪資格驗證尚未完成，無法送出</strong><p>請回上一步重新驗證，或選擇改為一般付費預約。</p><button type="button" className="secondary-button" onClick={() => setStep(3)}><ArrowLeft /> 回上一步處理</button></div></div>
+                {checkout.status === "idle" && isEligibilityBlocking && (
+                  <div className="blocked-result"><ShieldCheck /><div><strong>免費參訪資格驗證尚未完成，無法送出</strong><p>請回上一步重新驗證，或明確選擇改為一般付費預約。</p><button type="button" className="secondary-button" onClick={() => setStep(3)}><ArrowLeft /> 回上一步處理</button></div></div>
                 )}
-                {checkout.status === "idle" && eligibility.status !== "unavailable" && eligibility.status !== "stale" && (
+                {checkout.status === "idle" && !isEligibilityBlocking && (
                   <button className="primary-button" onClick={submitBooking}>送出預約申請 <ArrowRight /></button>
                 )}
                 {checkout.status === "loading" && <button className="primary-button" disabled><LoaderCircle /> 正在保留名額…</button>}

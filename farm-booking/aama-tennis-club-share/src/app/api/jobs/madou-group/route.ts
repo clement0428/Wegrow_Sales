@@ -9,6 +9,7 @@ import { buildQueueMadouWebhookResultStatement, queueDailyDigestIfDue, type Mado
 import { MAX_SEND_ATTEMPTS, nextAttemptDelayMinutes, sendLinePushMessage, type LineMessage } from "@/lib/line/messaging";
 import { processMadouPostbackAction, type MadouPostbackAction } from "@/lib/line/madou-webhook-process";
 import { isSupersededWorkCard, type CurrentBookingState } from "@/lib/farm/madou-work-card-staleness";
+import { reconcileMissingWorkCards } from "@/lib/farm/booking-side-effects";
 import { claimRow } from "@/lib/outbox/claim";
 import { startJobRun, completeJobRun } from "@/lib/outbox/job-run";
 
@@ -125,6 +126,14 @@ export async function POST(request: Request) {
 
   const digestQueued = await queueDailyDigestIfDue(db, now);
 
+  // 2026-10-18審查修正（P0）：原本「補工作卡」只會在客戶自己重新整理頁面、用
+  // 同一把idempotencyKey重試時才觸發——如果booking INSERT成功後客戶再也沒有
+  // 任何動作（直接關掉分頁），工作卡就永久消失，沒有任何機制會自動補上。這裡
+  // 不依賴客戶重試，每個tick主動掃描近期（72小時內）建立、現在這個狀態應該要
+  // 有工作卡卻完全沒有的預約，直接補上——跟Phase 0/digest一樣只是寫入queue，
+  // 不需要LINE憑證，所以也放在下面的credentials檢查之前執行。
+  const reconciled = await reconcileMissingWorkCards(db);
+
   // 2026-10-17審查發現的同一類D1額度問題（同reminders/sales-sync）：下面這段
   // !groupId／!accessToken檢查原本寫在per-row迴圈「裡面」，代表即使一開始就
   // 知道這兩個設定缺一，還是會把所有due的line_group通知逐筆claim+UPDATE
@@ -137,7 +146,7 @@ export async function POST(request: Request) {
     await completeJobRun(db, runId, { dueCount: 0, sent: 0, failed: 0, blocked: 0 }, null, !groupId ? "no_group_id_skipped_entirely" : "no_credentials_skipped_entirely");
     return Response.json({
       mode: "credentials_not_configured",
-      digestQueued, dueCount: 0, sent: 0, superseded: 0, blockedNoCredentials: 0, blockedNoGroup: 0, failed: 0,
+      digestQueued, reconciled, dueCount: 0, sent: 0, superseded: 0, blockedNoCredentials: 0, blockedNoGroup: 0, failed: 0,
       webhookRetryDueCount: (retryDue.results ?? []).length, webhookRetried, webhookDeadLettered,
       runId,
     });
@@ -228,7 +237,7 @@ export async function POST(request: Request) {
 
   return Response.json({
     mode: "processing",
-    digestQueued, dueCount: rows.length, sent, superseded, failed,
+    digestQueued, reconciled, dueCount: rows.length, sent, superseded, failed,
     webhookRetryDueCount: (retryDue.results ?? []).length, webhookRetried, webhookDeadLettered,
     runId,
   });

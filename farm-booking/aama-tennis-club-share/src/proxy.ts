@@ -22,6 +22,13 @@ const PUBLIC_PREFIXES = [
   "/api/line/webhook",
 ];
 
+// /api/farm/admin/bookings/:id/status 的cancel動作可以用service secret取代
+// 真人員工session（見該route.ts的resolveActor()，目前只開放cancel這個動作）
+// ——這裡只是粗略放行讓請求進得去route本身，真正的timing-safe比對跟「只限
+// cancel」的限制都在route handler內，proxy這層不是最終授權邊界（Edge runtime
+// 不支援node:crypto，用不了timingSafeEqual，所以只做字串比對當預先過濾）。
+const ADMIN_SERVICE_PATH_PATTERN = /^\/api\/farm\/admin\/bookings\/[^/]+\/status$/;
+
 export function proxy(req: NextRequest) {
   const { pathname, search } = req.nextUrl;
   if (pathname === "/" || PUBLIC_PREFIXES.some((prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`))) {
@@ -29,6 +36,11 @@ export function proxy(req: NextRequest) {
   }
   if (process.env.DEV_FAKE_LOGIN === "1" && pathname === "/admin") {
     return NextResponse.next();
+  }
+  if (ADMIN_SERVICE_PATH_PATTERN.test(pathname)) {
+    const bearer = (req.headers.get("authorization") ?? "").replace(/^Bearer\s+/i, "").trim();
+    const serviceSecret = process.env.FARM_BOOKING_ADMIN_SERVICE_SECRET;
+    if (serviceSecret && bearer && bearer === serviceSecret) return NextResponse.next();
   }
   const hasSession = req.cookies.get("tc_session")?.value;
   if (hasSession) return NextResponse.next();

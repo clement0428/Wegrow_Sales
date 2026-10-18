@@ -6,11 +6,10 @@ import { calculateVisitPrice } from "@/lib/farm/pricing";
 import { findBooking, listMemberBookings } from "@/lib/farm/repository";
 import { getCurrentMember } from "@/lib/auth/current-member";
 import { isAllowedBookingSlot, ticketRateBpsForSlot } from "@/lib/farm/visit-policy";
-import { queueSalesSyncEvent } from "@/lib/sales/queue";
 import { redeemAdoptionEligibilityNonce } from "@/lib/farm/adoption-eligibility";
 import { ELIGIBILITY_SESSION_COOKIE, checkEligibilitySession, markEligibilitySessionUsed } from "@/lib/farm/eligibility-session";
 import { taipeiDateIso } from "@/lib/farm/taipei-date";
-import { queueMadouWorkCard } from "@/lib/line/madou-group-queue";
+import { ensureBookingSideEffectsQueued } from "@/lib/farm/booking-side-effects";
 
 // Orbit那端回的reason要分成兩類給客戶看：一類是「這次驗證session本身失效了」
 // （過期、被用過、日期對不上、根本找不到）——這些都該導回「請重新驗證」而不是
@@ -49,54 +48,6 @@ function makeLookupCode() {
 function makeBookingNumber() {
   const date = new Date().toISOString().slice(2, 10).replaceAll("-", "");
   return `WG-${date}-${crypto.randomUUID().replaceAll("-", "").slice(0, 6).toUpperCase()}`;
-}
-
-type BookingRow = {
-  id: string; booking_number: string; slot_id: string; group_name: string | null;
-  adult_count: number; child_count: number; infant_count: number; total_people: number;
-  plant_count: number; meal_count: number; vegetarian_meal_count: number;
-};
-
-// 2026-10-18審查修正：原本queueSalesSyncEvent/queueMadouWorkCard只在「第一次
-// INSERT成功」的那條路徑上執行一次——如果booking真正建立成功之後、回應送達
-// 客戶之前這中間任何一步死掉（D1暫時性錯誤、worker被回收），客戶重新整理頁面
-// 用同一把idempotencyKey重試，會在頂部的「prior」判斷直接命中、原封不動回傳
-// 既有預約，永遠不會再補跑這兩個outbox寫入——工作卡/Sales同步就永久消失了。
-// 這支函式在任何偵測到「這是已存在預約」的路徑都呼叫，依賴兩者本身已經是
-// INSERT OR IGNORE＋決定性retry_key的冪等設計（見queueMadouWorkCard/
-// queueSalesSyncEvent）：已經成功過的那次是no-op，真正漏掉的那次才會補上，
-// 不會因為重試就重複建立第二張工作卡或第二筆Sales事件。
-async function ensureBookingSideEffectsQueued(db: D1Database, bookingId: string, eligibilityNonce: string | undefined, idempotencyKey: string) {
-  const booking = await db
-    .prepare(
-      `SELECT b.id, b.booking_number, b.slot_id, b.group_name, b.adult_count, b.child_count, b.infant_count,
-              b.total_people, b.plant_count, b.meal_count, b.vegetarian_meal_count, b.payment_status
-       FROM farm_bookings b WHERE b.id = ?`,
-    )
-    .bind(bookingId)
-    .first<BookingRow & { payment_status: string }>();
-  if (!booking) return;
-  const slot = await db
-    .prepare(`SELECT s.starts_at, s.ends_at, e.name AS experience_name FROM farm_slots s JOIN farm_experiences e ON e.id = s.experience_id WHERE s.id = ?`)
-    .bind(booking.slot_id)
-    .first<{ starts_at: string; ends_at: string; experience_name: string }>();
-  if (!slot) return;
-
-  if (booking.payment_status === "not_required" && eligibilityNonce) {
-    await markEligibilitySessionUsed(db, eligibilityNonce, idempotencyKey).catch(() => {});
-  }
-  await queueSalesSyncEvent(db, booking.id, "booking_created");
-  await queueMadouWorkCard(db, 1, {
-    eventKind: "pending",
-    visitVersion: 1,
-    booking: {
-      bookingId: booking.id, bookingNumber: booking.booking_number, groupName: booking.group_name,
-      experience: slot.experience_name, startsAt: slot.starts_at, endsAt: slot.ends_at,
-      adultCount: booking.adult_count, childCount: booking.child_count, infantCount: booking.infant_count,
-      totalPeople: booking.total_people, plantCount: booking.plant_count, mealCount: booking.meal_count,
-      vegetarianMealCount: booking.vegetarian_meal_count,
-    },
-  });
 }
 
 export async function POST(request: Request) {
