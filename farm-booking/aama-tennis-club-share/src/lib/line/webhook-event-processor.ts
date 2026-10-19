@@ -2,8 +2,43 @@ import "server-only";
 import { getDb } from "@/lib/db/client";
 import { buildQueueMadouWebhookResultStatement } from "@/lib/line/madou-group-queue";
 import { processMadouPostbackAction, type MadouPostbackAction } from "@/lib/line/madou-webhook-process";
-import { sendLineReplyMessage } from "@/lib/line/messaging";
+import { fetchGroupMemberDisplayName, sendLineReplyMessage } from "@/lib/line/messaging";
 import { claimRow } from "@/lib/outbox/claim";
+
+// 2026-10-19 Clement決定：「麻豆AI草莓現場群」所有成員都能操作該群的工作卡，
+// 不要求先註冊/綁定/被管理員設成staff——真正的授權邊界是上面已經做完的
+// 驗證（LINE簽章verify_signature過＋source.groupId比對正式MADOU_GROUP_ID＋
+// source.userId存在），不是members.role。這裡找不到既有member時自動建立一筆
+// role='member'（CHECK約束裡最低權限、不在STAFF_ROLES裡）的紀錄——同一個
+// line_user_id如果之後真的用LIFF登入網站，也只會沿用這個最低權限角色，不會
+// 因為在麻豆群操作過工作卡就被動升級成網站staff/admin，滿足「不要把所有人
+// 升成全站管理員」的要求。displayName盡量用LINE真實群組成員資料，抓不到就用
+// 一個不含敏感資訊的佔位字串，不影響授權或功能。
+async function resolveGroupActorMember(
+  db: D1Database, lineUserId: string, groupId: string, accessToken: string | undefined,
+): Promise<{ id: string; display_name: string; role: string }> {
+  const existing = await db.prepare("SELECT id, display_name, role FROM members WHERE line_user_id = ?").bind(lineUserId).first<{ id: string; display_name: string; role: string }>();
+  if (existing) return existing;
+
+  const displayName = accessToken ? await fetchGroupMemberDisplayName(accessToken, groupId, lineUserId) : null;
+  const fallbackName = `麻豆群成員-${lineUserId.slice(-6)}`;
+  await db
+    .prepare(
+      `INSERT INTO members (id, line_user_id, display_name, role)
+       VALUES (?, ?, ?, 'member')
+       ON CONFLICT(line_user_id) DO NOTHING`,
+    )
+    .bind(crypto.randomUUID(), lineUserId, displayName ?? fallbackName)
+    .run();
+
+  // 用剛才的INSERT ON CONFLICT DO NOTHING後再查一次，而不是直接信任剛產生的id——
+  // 如果同一個全新line_user_id有兩個併發事件同時到這裡，有一個的INSERT會被
+  // DO NOTHING吃掉，但它手上的id是自己生的、不是真正寫進DB的那一筆，一定要
+  // 重新查詢才能拿到唯一真正存在的member row。
+  const resolved = await db.prepare("SELECT id, display_name, role FROM members WHERE line_user_id = ?").bind(lineUserId).first<{ id: string; display_name: string; role: string }>();
+  if (!resolved) throw new Error("failed to resolve or create member for verified group actor");
+  return resolved;
+}
 
 export const KNOWN_ACTIONS: ReadonlySet<string> = new Set(["claim", "view_prep", "report_issue"]);
 
@@ -45,8 +80,7 @@ export async function processSingleLineEvent(
   const expectedVisitVersion = vRaw !== null && /^\d+$/.test(vRaw) ? Number(vRaw) : null;
   if (!action || !bookingId || !KNOWN_ACTIONS.has(action)) return { handled: false };
 
-  const member = await db.prepare("SELECT id, display_name, role FROM members WHERE line_user_id = ?").bind(source.userId).first<{ id: string; display_name: string; role: string }>();
-  if (!member) return { handled: false }; // unrecognized LINE account — never trust a bare userId as staff
+  const member = await resolveGroupActorMember(db, source.userId, source.groupId, accessToken);
 
   const nowIso = new Date().toISOString();
   const inserted = await db

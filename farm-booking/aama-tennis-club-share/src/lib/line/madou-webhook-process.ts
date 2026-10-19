@@ -1,5 +1,4 @@
 import "server-only";
-import { STAFF_ROLES } from "@/lib/auth/roles";
 import { claimBooking } from "@/lib/farm/claim";
 import { composePrepDetailText, type WorkCardBooking } from "./madou-group-text";
 
@@ -39,10 +38,15 @@ export async function processMadouPostbackAction(
   member: MadouActorMember,
   eventId: string,
 ): Promise<MadouProcessResult> {
+  // 2026-10-19 Clement決定：麻豆現場群本身的verified group membership（已通過
+  // LINE簽章驗證、source.groupId比對正式MADOU_GROUP_ID、source.userId存在）就是
+  // 這三個動作唯一需要的授權——不再檢查member.role。這個function只會從
+  // webhook-event-processor.ts(已做過上述三項驗證)跟它的retry worker被呼叫
+  // （見本檔開頭說明），authenticated網站端的接單按鈕走完全不同的路徑
+  // （/api/farm/admin/bookings/[id]/claim/route.ts自己呼叫requireStaff()+
+  // canClaimBooking()，直接呼叫claim.ts的claimBooking，完全不經過這支function）
+  // ——relax這裡的角色檢查不影響網站端仍然需要真正staff權限才能操作。
   if (action === "claim") {
-    if (member.role !== "admin" && member.role !== "reception") {
-      return { replyText: "此角色無法接單，請聯絡管理員。" };
-    }
     // A missing/unparseable `v` must REJECT, not silently skip the version
     // check — passing `undefined` through to claimBooking (its sentinel for
     // "no version check requested," used by the admin-UI route which has no
@@ -59,13 +63,6 @@ export async function processMadouPostbackAction(
     if (result.reason === "cancelled") return { replyText: "這筆預約已取消，無法接單。" };
     if (result.reason === "stale_card") return { replyText: "此工作卡已過期（預約已有更新），請用最新訊息重新接單。" };
     return { replyText: "找不到這筆預約。" };
-  }
-
-  // view_prep／report_issue 一致用同一組員工角色檢查（規格：三種角色皆可讀必要
-  // 資訊／回報，只有「我接單」限定admin/reception）——原本只有claim做角色檢查，
-  // 經審查發現不一致，統一補上。
-  if (!(STAFF_ROLES as readonly string[]).includes(member.role)) {
-    return { replyText: "此角色無法執行這個操作，請聯絡管理員。" };
   }
 
   if (action === "view_prep") {

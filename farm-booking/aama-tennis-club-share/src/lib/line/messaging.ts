@@ -76,4 +76,21 @@ export async function sendLineReplyMessage(accessToken: string, replyToken: stri
   return { ok: false, status: response.status, error: body.slice(0, 500) };
 }
 
+// 2026-10-19新增：麻豆群成員首次操作工作卡時，用LINE自己的「取得群組成員資料」
+// API抓真實displayName——只是UX用途（讓接單紀錄顯示真名而非一串userId），抓
+// 失敗完全不影響授權判斷（授權看的是已驗證的groupId+userId，不是這個名字），
+// 呼叫端失敗時自行決定fallback顯示字串。
+export async function fetchGroupMemberDisplayName(accessToken: string, groupId: string, userId: string): Promise<string | null> {
+  try {
+    const response = await fetch(`https://api.line.me/v2/bot/group/${encodeURIComponent(groupId)}/member/${encodeURIComponent(userId)}`, {
+      headers: { Authorization: `Bearer ${accessToken}` },
+    });
+    if (!response.ok) return null;
+    const body = (await response.json()) as { displayName?: string };
+    return body.displayName?.trim() || null;
+  } catch {
+    return null;
+  }
+}
+
 export { nextAttemptDelayMinutes, MAX_SEND_ATTEMPTS } from "@/lib/outbox/backoff";
