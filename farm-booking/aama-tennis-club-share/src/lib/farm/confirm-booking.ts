@@ -17,8 +17,8 @@ export type ConfirmBookingResult =
 export async function confirmBooking(db: D1Database, bookingId: string, actorType: "staff" | "line_webhook", actorId: string): Promise<ConfirmBookingResult> {
   const now = new Date().toISOString();
   const result = await db
-    .prepare("UPDATE farm_bookings SET booking_status = 'confirmed', version = version + 1, updated_at = ? WHERE id = ? AND booking_status = 'requested' AND cancelled_at IS NULL")
-    .bind(now, bookingId)
+    .prepare("UPDATE farm_bookings SET booking_status = 'confirmed', confirmed_at = ?, version = version + 1, updated_at = ? WHERE id = ? AND booking_status = 'requested' AND cancelled_at IS NULL")
+    .bind(now, now, bookingId)
     .run();
 
   if (!result.meta.changes) {

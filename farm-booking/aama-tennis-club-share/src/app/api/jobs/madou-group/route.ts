@@ -3,13 +3,14 @@ import { getDb } from "@/lib/db/client";
 import { env } from "@/lib/env";
 import { classifyLineError } from "@/lib/line/error-classification";
 import {
-  composeWorkCardCancelledText, composeWorkCardMessage, composeWorkCardPendingMessage, composeWorkCardRescheduledMessage,
+  composeUnclaimedEscalationMessage, composeWorkCardCancelledText, composeWorkCardMessage, composeWorkCardPendingMessage, composeWorkCardRescheduledMessage,
 } from "@/lib/line/madou-group-text";
 import { buildQueueMadouWebhookResultStatement, queueDailyDigestIfDue, type MadouWorkCardSnapshot } from "@/lib/line/madou-group-queue";
 import { MAX_SEND_ATTEMPTS, nextAttemptDelayMinutes, sendLinePushMessage, type LineMessage } from "@/lib/line/messaging";
 import { processMadouPostbackAction, type MadouPostbackAction } from "@/lib/line/madou-webhook-process";
 import { isSupersededWorkCard, type CurrentBookingState } from "@/lib/farm/madou-work-card-staleness";
 import { reconcileMissingWorkCards } from "@/lib/farm/booking-side-effects";
+import { findUnclaimedEscalationCandidates, queueUnclaimedEscalations } from "@/lib/farm/unclaimed-escalation";
 import { claimRow } from "@/lib/outbox/claim";
 import { startJobRun, completeJobRun } from "@/lib/outbox/job-run";
 
@@ -32,10 +33,17 @@ async function currentBookingState(db: D1Database, bookingId: string | null): Pr
 }
 
 function buildMessages(notificationType: string, snapshotJson: string): LineMessage[] | null {
-  const snapshot = JSON.parse(snapshotJson) as MadouWorkCardSnapshot | { targetDate: string; text: string } | { text: string };
+  const snapshot = JSON.parse(snapshotJson) as
+    | MadouWorkCardSnapshot
+    | { targetDate: string; text: string }
+    | { text: string }
+    | { booking: MadouWorkCardSnapshot["booking"]; visitVersion: number; waitingMinutes: number };
 
   if ((notificationType === "madou_daily_digest" || notificationType === "madou_webhook_result") && "text" in snapshot) {
     return [{ type: "text", text: snapshot.text }];
+  }
+  if (notificationType === "madou_unclaimed_escalation" && "waitingMinutes" in snapshot) {
+    return [composeUnclaimedEscalationMessage(snapshot.booking, snapshot.visitVersion, snapshot.waitingMinutes)];
   }
   if (notificationType === "madou_work_card_event" && "eventKind" in snapshot) {
     if (snapshot.eventKind === "pending") return [composeWorkCardPendingMessage(snapshot.booking, snapshot.visitVersion)];
@@ -134,6 +142,12 @@ export async function POST(request: Request) {
   // 不需要LINE憑證，所以也放在下面的credentials檢查之前執行。
   const reconciled = await reconcileMissingWorkCards(db);
 
+  // 未接單升級：門檻未設定時findUnclaimedEscalationCandidates()直接回傳空陣列
+  // （見unclaimed-escalation.ts），這裡不用再判斷一次「有沒有設定」——跟
+  // digest/reconcile一樣只是寫入queue，不需要LINE憑證，放在憑證檢查之前。
+  const escalationCandidates = await findUnclaimedEscalationCandidates(db, now);
+  const escalated = await queueUnclaimedEscalations(db, escalationCandidates);
+
   // 2026-10-17審查發現的同一類D1額度問題（同reminders/sales-sync）：下面這段
   // !groupId／!accessToken檢查原本寫在per-row迴圈「裡面」，代表即使一開始就
   // 知道這兩個設定缺一，還是會把所有due的line_group通知逐筆claim+UPDATE
@@ -146,7 +160,7 @@ export async function POST(request: Request) {
     await completeJobRun(db, runId, { dueCount: 0, sent: 0, failed: 0, blocked: 0 }, null, !groupId ? "no_group_id_skipped_entirely" : "no_credentials_skipped_entirely");
     return Response.json({
       mode: "credentials_not_configured",
-      digestQueued, reconciled, dueCount: 0, sent: 0, superseded: 0, blockedNoCredentials: 0, blockedNoGroup: 0, failed: 0,
+      digestQueued, reconciled, escalated, dueCount: 0, sent: 0, superseded: 0, blockedNoCredentials: 0, blockedNoGroup: 0, failed: 0,
       webhookRetryDueCount: (retryDue.results ?? []).length, webhookRetried, webhookDeadLettered,
       runId,
     });
@@ -237,7 +251,7 @@ export async function POST(request: Request) {
 
   return Response.json({
     mode: "processing",
-    digestQueued, reconciled, dueCount: rows.length, sent, superseded, failed,
+    digestQueued, reconciled, escalated, dueCount: rows.length, sent, superseded, failed,
     webhookRetryDueCount: (retryDue.results ?? []).length, webhookRetried, webhookDeadLettered,
     runId,
   });

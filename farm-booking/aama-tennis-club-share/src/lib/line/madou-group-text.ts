@@ -114,6 +114,22 @@ export function composeWorkCardRescheduledMessage(b: WorkCardBooking, oldStartsA
   };
 }
 
+// 未接單升級：門檻分鐘數由後台設定（settings.ts），沒設定時這支函式根本不會
+// 被呼叫（見unclaimed-escalation.ts）。重發同一組按鈕，不是只貼一句提醒文字——
+// 現場看到升級訊息要能直接按，不用回頭找原卡。
+export function composeUnclaimedEscalationMessage(b: WorkCardBooking, visitVersion: number, waitingMinutes: number): LineButtonsTemplateMessage {
+  const start = new Date(b.startsAt);
+  const text = [
+    `⚠️ 已超時未接單（等待${waitingMinutes}分鐘）`,
+    `${b.bookingNumber}｜${dateFmt.format(start)} ${timeFmt.format(start)}｜${b.experience}`,
+  ].join("\n");
+  return {
+    type: "template",
+    altText: `未接單提醒 ${b.bookingNumber}`,
+    template: { type: "buttons", text: text.slice(0, 160), actions: buildWorkCardActions(b.bookingId, visitVersion) },
+  };
+}
+
 export function composeWorkCardCancelledText(b: Pick<WorkCardBooking, "bookingNumber" | "startsAt">): string {
   const start = new Date(b.startsAt);
   return [

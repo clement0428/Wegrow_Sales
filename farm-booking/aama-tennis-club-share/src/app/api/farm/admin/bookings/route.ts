@@ -7,6 +7,7 @@ const querySchema = z.object({
   from: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
   to: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
   status: z.enum(STATUS_BUCKETS).optional(),
+  unclaimed: z.enum(["true"]).optional(),
 });
 
 type BookingRow = {
@@ -25,6 +26,8 @@ type BookingRow = {
   arrived_at: string | null;
   completed_at: string | null;
   created_at: string;
+  confirmed_at: string | null;
+  claimed_by_name: string | null;
   starts_at: string;
   ends_at: string;
   experience: string;
@@ -44,7 +47,7 @@ export async function GET(request: Request) {
     status: url.searchParams.get("status") ?? undefined,
   });
   if (!parsed.success) return Response.json({ error: "查詢參數錯誤" }, { status: 400 });
-  const { from, to, status } = parsed.data;
+  const { from, to, status, unclaimed } = parsed.data;
 
   const db = await getDb();
   const now = new Date().toISOString();
@@ -58,6 +61,11 @@ export async function GET(request: Request) {
     conditions.push("date(s.starts_at) <= date(?)");
     params.push(to);
   }
+  // 未接單清單：已確認、未取消、還沒有人接——跟一般依日期區間篩選的訂單清單
+  // 分開用途，所以直接疊加條件，不新開一支route重複整段查詢邏輯。
+  if (unclaimed === "true") {
+    conditions.push("b.booking_status = 'confirmed' AND b.cancelled_at IS NULL AND b.claimed_by_member_id IS NULL");
+  }
   const where = conditions.length ? `WHERE ${conditions.join(" AND ")}` : "";
 
   const result = await db
@@ -65,13 +73,15 @@ export async function GET(request: Request) {
       `
     SELECT b.id, b.booking_number, b.lookup_code, b.contact_name, b.contact_phone, b.group_name,
            b.total_people, b.amount_twd, b.booking_status, b.payment_status, b.hold_expires_at,
-           b.cancelled_at, b.arrived_at, b.completed_at, b.created_at,
+           b.cancelled_at, b.arrived_at, b.completed_at, b.created_at, b.confirmed_at,
+           m.display_name AS claimed_by_name,
            s.starts_at, s.ends_at, e.name AS experience,
            COALESCE((SELECT SUM(amount_twd) FROM farm_payment_records p WHERE p.booking_id = b.id AND p.record_type = 'payment'), 0) AS amount_received,
            COALESCE((SELECT SUM(amount_twd) FROM farm_payment_records p WHERE p.booking_id = b.id AND p.record_type = 'refund'), 0) AS amount_refunded
     FROM farm_bookings b
     JOIN farm_slots s ON s.id = b.slot_id
     JOIN farm_experiences e ON e.id = s.experience_id
+    LEFT JOIN members m ON m.id = b.claimed_by_member_id
     ${where}
     ORDER BY datetime(s.starts_at)
     LIMIT 500
@@ -114,6 +124,9 @@ export async function GET(request: Request) {
       endsAt: row.ends_at,
       experience: row.experience,
       createdAt: row.created_at,
+      confirmedAt: row.confirmed_at,
+      claimedByName: row.claimed_by_name,
+      waitingMinutes: row.confirmed_at ? Math.max(0, Math.floor((Date.parse(now) - Date.parse(row.confirmed_at)) / 60000)) : null,
     })),
   });
 }

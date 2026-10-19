@@ -32,6 +32,7 @@ type AdminBooking = {
   trueOutstanding: number; overpaidAmount: number;
   bookingStatus: string; paymentStatus: string;
   statusBucket: StatusBucket; startsAt: string; endsAt: string; experience: string; createdAt: string;
+  confirmedAt: string | null; claimedByName: string | null; waitingMinutes: number | null;
 };
 
 const dateFmt = new Intl.DateTimeFormat("zh-TW", { month: "numeric", day: "numeric", weekday: "short", timeZone: "Asia/Taipei" });
@@ -202,6 +203,7 @@ function OrdersView({ role }: { role: StaffRole }) {
   const canManage = role === "admin"; // 改期／確認／取消：僅管理員
   const canCheckIn = role === "admin" || role === "reception"; // 報到：管理員＋接待員都可以
   const [statusFilter, setStatusFilter] = useState<StatusBucket | null>(null);
+  const [unclaimedOnly, setUnclaimedOnly] = useState(false);
   const [counts, setCounts] = useState<Record<StatusBucket, number> | null>(null);
   const [bookings, setBookings] = useState<AdminBooking[] | null>(null);
   const [state, setState] = useState<"loading" | "ready" | "error">("loading");
@@ -210,7 +212,13 @@ function OrdersView({ role }: { role: StaffRole }) {
 
   const [reloadTick, setReloadTick] = useState(0);
   const retry = useCallback(() => { setState("loading"); setReloadTick((n) => n + 1); }, []);
-  const selectStatus = useCallback((bucket: StatusBucket | null) => { setState("loading"); setStatusFilter(bucket); }, []);
+  const selectStatus = useCallback((bucket: StatusBucket | null) => { setState("loading"); setUnclaimedOnly(false); setStatusFilter(bucket); }, []);
+  const selectUnclaimed = useCallback(() => { setState("loading"); setStatusFilter(null); setUnclaimedOnly(true); }, []);
+
+  const [assigningId, setAssigningId] = useState<string | null>(null);
+  const [staffOptions, setStaffOptions] = useState<{ id: string; displayName: string; role: string }[] | null>(null);
+  const [staffOptionsState, setStaffOptionsState] = useState<"idle" | "loading" | "ready" | "error">("idle");
+  const [assignTarget, setAssignTarget] = useState("");
 
   const [reschedulingId, setReschedulingId] = useState<string | null>(null);
   const [slotOptions, setSlotOptions] = useState<AdminSession[] | null>(null);
@@ -219,7 +227,7 @@ function OrdersView({ role }: { role: StaffRole }) {
 
   useEffect(() => {
     const controller = new AbortController();
-    const qs = statusFilter ? `?status=${statusFilter}` : "";
+    const qs = unclaimedOnly ? "?unclaimed=true" : statusFilter ? `?status=${statusFilter}` : "";
     fetch(`/api/farm/admin/bookings${qs}`, { signal: controller.signal })
       .then(async (res) => {
         if (!res.ok) throw new Error(String(res.status));
@@ -234,7 +242,40 @@ function OrdersView({ role }: { role: StaffRole }) {
         setState("error");
       });
     return () => controller.abort();
-  }, [statusFilter, reloadTick]);
+  }, [statusFilter, unclaimedOnly, reloadTick]);
+
+  // Lazily fetched once, same pattern as openReschedule's slotOptions.
+  async function openAssign(bookingId: string) {
+    setActionError(null);
+    setAssigningId(bookingId);
+    setAssignTarget("");
+    if (staffOptionsState === "ready" || staffOptionsState === "loading") return;
+    setStaffOptionsState("loading");
+    try {
+      const res = await fetch("/api/farm/admin/staff");
+      if (!res.ok) throw new Error(String(res.status));
+      const data = await res.json() as { staff: { id: string; displayName: string; role: string }[] };
+      setStaffOptions(data.staff);
+      setStaffOptionsState("ready");
+    } catch {
+      setStaffOptionsState("error");
+    }
+  }
+
+  async function runAssign(bookingId: string) {
+    if (!assignTarget) return;
+    setActionError(null);
+    const res = await fetch(`/api/farm/admin/bookings/${bookingId}/assign-claim`, {
+      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ memberId: assignTarget }),
+    });
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({})) as { error?: string };
+      setActionError(body.error ?? `指派失敗（${res.status}）`);
+      return;
+    }
+    setAssigningId(null);
+    retry();
+  }
 
   async function runAction(bookingId: string, action: "confirm" | "cancel" | "check_in" | "complete") {
     setActionError(null);
@@ -333,12 +374,13 @@ function OrdersView({ role }: { role: StaffRole }) {
     <DataConnectionRow state={state} lastUpdated={lastUpdated} onRetry={retry} />
     <div className="admin-section-title"><div><h2>預約訂單</h2><p>預約狀態與付款狀態分開，不用付款成功假裝預約一定成立。</p></div></div>
     <div className="status-filter-row">
-      <button className={statusFilter === null ? "status-filter active" : "status-filter"} onClick={() => selectStatus(null)}>全部 {counts ? Object.values(counts).reduce((a, b) => a + b, 0) : ""}</button>
+      <button className={!unclaimedOnly && statusFilter === null ? "status-filter active" : "status-filter"} onClick={() => selectStatus(null)}>全部 {counts ? Object.values(counts).reduce((a, b) => a + b, 0) : ""}</button>
       {STATUS_ORDER.map((bucket) => (
-        <button key={bucket} className={statusFilter === bucket ? `status-filter active status-b-${bucket}` : `status-filter status-b-${bucket}`} onClick={() => selectStatus(bucket)}>
+        <button key={bucket} className={!unclaimedOnly && statusFilter === bucket ? `status-filter active status-b-${bucket}` : `status-filter status-b-${bucket}`} onClick={() => selectStatus(bucket)}>
           {STATUS_LABELS[bucket]} {counts ? counts[bucket] : ""}
         </button>
       ))}
+      <button className={unclaimedOnly ? "status-filter active status-b-exception" : "status-filter status-b-exception"} onClick={selectUnclaimed}>未接單</button>
     </div>
     {actionError && <div className="action-error"><AlertTriangle /> {actionError}</div>}
     {state === "error" ? <div className="empty-admin"><AlertTriangle /><strong>資料讀取失敗</strong><span>請按上方「重試」</span></div> : (
@@ -359,16 +401,42 @@ function OrdersView({ role }: { role: StaffRole }) {
                   ? <strong className="overpaid">超收 NT$ {b.overpaidAmount.toLocaleString()}</strong>
                   : <strong className={b.trueOutstanding > 0 ? "outstanding" : "settled"}>{b.trueOutstanding > 0 ? `未收 NT$ ${b.trueOutstanding.toLocaleString()}` : "已收清"}</strong>}
               </span>
-              <span className={`status-pill status-b-${b.statusBucket}`}>{STATUS_LABELS[b.statusBucket]}</span>
+              <span className={`status-pill status-b-${b.statusBucket}`}>
+                {STATUS_LABELS[b.statusBucket]}
+                {b.statusBucket === "confirmed" && (
+                  b.claimedByName
+                    ? <small className="claim-note">已接單：{b.claimedByName}</small>
+                    : <small className="claim-note claim-note-unclaimed">未接單{b.waitingMinutes !== null ? `・已等${b.waitingMinutes}分` : ""}</small>
+                )}
+              </span>
               <span className="order-actions">
                 {canManage && b.statusBucket === "hold" && <button onClick={() => runAction(b.id, "confirm")}>確認</button>}
                 {canManage && (b.statusBucket === "hold" || b.statusBucket === "confirmed") && <button onClick={() => runAction(b.id, "cancel")}>取消</button>}
                 {canManage && (b.statusBucket === "hold" || b.statusBucket === "confirmed") && <button onClick={() => openReschedule(b.id)}>改期</button>}
+                {canManage && b.statusBucket === "confirmed" && !b.claimedByName && <button onClick={() => openAssign(b.id)}>指定接待人</button>}
                 {canCheckIn && b.statusBucket === "confirmed" && <button onClick={() => runAction(b.id, "check_in")}>報到</button>}
                 {canManage && b.statusBucket === "arrived" && <button onClick={() => runAction(b.id, "complete")}>完成</button>}
                 {canManage && b.statusBucket !== "cancelled" && <button onClick={() => openPayment(b.id)}>收款</button>}
               </span>
             </div>
+            {assigningId === b.id && (
+              <div className="reschedule-row">
+                {staffOptionsState === "loading" && <span><RefreshCw className="spin" size={14} /> 載入人員清單中…</span>}
+                {staffOptionsState === "error" && <span className="action-error-inline">人員清單讀取失敗</span>}
+                {staffOptionsState === "ready" && (
+                  <>
+                    <select value={assignTarget} onChange={(e) => setAssignTarget(e.target.value)}>
+                      <option value="">選擇接待人…</option>
+                      {(staffOptions ?? []).map((s) => (
+                        <option key={s.id} value={s.id}>{s.displayName}（{s.role === "admin" ? "管理員" : "接待員"}）</option>
+                      ))}
+                    </select>
+                    <button className="secondary-button" disabled={!assignTarget} onClick={() => runAssign(b.id)}>確定指派</button>
+                  </>
+                )}
+                <button className="secondary-button" onClick={() => setAssigningId(null)}>取消</button>
+              </div>
+            )}
             {reschedulingId === b.id && (
               <div className="reschedule-row">
                 {slotOptionsState === "loading" && <span><RefreshCw className="spin" size={14} /> 載入可選時段中…</span>}
@@ -598,8 +666,88 @@ function JobStatusPanel() {
 function SettingsView() {
   return <div className="settings-columns">
     <div className="admin-section"><h2>容量政策</h2><p>此規則已依使用者確認固定；變更時建立新版本，不回寫舊訂單。</p><div className="policy-list"><label>每時段總人數上限<input value="30" readOnly /></label><label>每時段最多團數<input value="2" readOnly /></label></div><div className="verified-line"><CheckCircle2 />規則版本 V2：每時段 30 人／最多 2 團，不分團數分級</div></div>
+    <UnclaimedEscalationPanel />
     <div className="admin-section"><h2>待正式核定</h2><ul className="checklist"><li>成人、兒童與幼兒票價及年齡</li><li>付款保留時間（開發預設 10 分鐘）</li><li>前一天提醒時間（開發預設 18:00，提醒會排入佇列但 LINE Messaging API 憑證未設定，不會真的送出）</li><li>地址、導航、雨天、取消與退款政策</li><li>LINE／金流／Google Calendar 憑證</li><li>Sales 同步（outbox＋job已完整實作，Sales端接收API未部署）</li></ul></div>
     <JobStatusPanel />
+  </div>;
+}
+
+// PDF建議30分鐘，Clement還沒定案——這裡沒有預設值，讀到null就顯示「尚未設定
+// （自動升級停用）」，不是靜靜把30帶進輸入框讓人以為那已經是正式規則。
+function UnclaimedEscalationPanel() {
+  const [minutes, setMinutes] = useState<number | null>(null);
+  const [draft, setDraft] = useState("");
+  const [state, setState] = useState<"loading" | "ready" | "error">("loading");
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
+  const [savedAt, setSavedAt] = useState<Date | null>(null);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    fetch("/api/farm/admin/settings", { signal: controller.signal })
+      .then(async (res) => {
+        if (!res.ok) throw new Error(String(res.status));
+        const data = await res.json() as { unclaimedEscalationMinutes: number | null };
+        setMinutes(data.unclaimedEscalationMinutes);
+        setDraft(data.unclaimedEscalationMinutes === null ? "" : String(data.unclaimedEscalationMinutes));
+        setState("ready");
+      })
+      .catch((error: unknown) => {
+        if (error instanceof DOMException && error.name === "AbortError") return;
+        setState("error");
+      });
+    return () => controller.abort();
+  }, []);
+
+  async function save(next: number | null) {
+    setSaving(true); setSaveError(null);
+    try {
+      const res = await fetch("/api/farm/admin/settings", {
+        method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ unclaimedEscalationMinutes: next }),
+      });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({})) as { error?: string };
+        setSaveError(body.error ?? `儲存失敗（${res.status}）`);
+        return;
+      }
+      setMinutes(next);
+      setSavedAt(new Date());
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return <div className="admin-section">
+    <h2>未接單升級提醒</h2>
+    <p>超過設定分鐘仍未接單的「已確認」預約，麻豆群會收到額外提醒＋重發接單按鈕。PDF建議值為30分鐘，但這是建議值，不是已確認規則——留空＝停用自動升級，「訂單」頁的「未接單」清單仍會照常顯示等待時間，可手動指定接待人。</p>
+    {state === "loading" && <div className="empty-admin"><RefreshCw className="spin" size={14} /> 載入中…</div>}
+    {state === "error" && <div className="action-error-inline">設定讀取失敗</div>}
+    {state === "ready" && (
+      <div className="policy-list">
+        <label>升級門檻（分鐘，留空＝停用）
+          <input type="number" min={1} max={1440} placeholder="未設定" value={draft} onChange={(e) => setDraft(e.target.value)} />
+        </label>
+        <div className="order-actions">
+          <button
+            disabled={saving}
+            onClick={() => {
+              const n = draft.trim() === "" ? null : Number(draft);
+              if (n !== null && (!Number.isInteger(n) || n <= 0)) { setSaveError("請輸入正整數分鐘數，或留空停用"); return; }
+              void save(n);
+            }}
+          >
+            {saving ? "儲存中…" : "儲存"}
+          </button>
+          {draft !== "" && <button className="secondary-button" disabled={saving} onClick={() => { setDraft(""); void save(null); }}>停用自動升級</button>}
+        </div>
+        {saveError && <div className="action-error-inline">{saveError}</div>}
+        <div className="verified-line">
+          <CheckCircle2 />
+          {minutes === null ? "目前：自動升級已停用" : `目前：超過 ${minutes} 分鐘未接單會發出群組提醒`}
+          {savedAt && `（已儲存 ${savedAt.toLocaleTimeString("zh-TW")}）`}
+        </div>
+      </div>
+    )}
   </div>;
 }
 

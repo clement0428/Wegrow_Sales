@@ -393,7 +393,9 @@ button:disabled { cursor: not-allowed; opacity: .45; }
 .payment-row select, .payment-row input { min-height: 34px; padding: 0 8px; border: 1px solid var(--line); border-radius: 3px; background: #fff; font-size: 12px; }
 .payment-row input[type="text"] { min-width: 200px; }
 .order-head { min-height: 44px; background: #f5f6f1; color: var(--muted); font-weight: 700; }
-.status-pill { justify-self: start; padding: 5px 8px; border-radius: 3px; background: #eef5f0; color: var(--green); font-weight: 700; }
+.status-pill { justify-self: start; padding: 5px 8px; border-radius: 3px; background: #eef5f0; color: var(--green); font-weight: 700; display: flex; flex-direction: column; gap: 2px; }
+.claim-note { font-weight: 500; font-size: 11px; color: var(--muted); }
+.claim-note-unclaimed { color: var(--red); }
 .status-待付款 { background: #fff8d6; color: #785d00; }
 .status-退款處理中 { background: #fff0ee; color: var(--red); }
 .admin-search { min-height: 42px; width: 240px; border: 1px solid var(--line); padding: 0 12px; }
