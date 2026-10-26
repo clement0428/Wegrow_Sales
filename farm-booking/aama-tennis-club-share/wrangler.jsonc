@@ -40,7 +40,8 @@
       ],
       "vars": {
         "NEXT_PUBLIC_LIFF_ID": "2011633158-ZdAj8eJh",
-        "NEXT_PUBLIC_SITE_URL": "https://booking.wegrow-orbit.com"
+        "NEXT_PUBLIC_SITE_URL": "https://booking.wegrow-orbit.com",
+        "SALES_SYNC_API_URL": "https://sales.wegrow-orbit.com/api/farm-visitors/sync"
       }
     }
   }
