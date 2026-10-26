@@ -14,6 +14,7 @@
     "cf:dev": "wrangler d1 migrations apply DB --local",
     "cf:seed": "wrangler d1 execute DB --local --file d1/migrations/0002_seed_dev.sql",
     "preview": "cross-env BUILD_TARGET_ENV=preview opennextjs-cloudflare build && opennextjs-cloudflare preview",
+    "predeploy": "cross-env BUILD_TARGET_ENV=production node scripts/sync-build-env.mjs",
     "deploy": "cross-env BUILD_TARGET_ENV=production opennextjs-cloudflare build && opennextjs-cloudflare deploy --env production",
     "postdeploy": "node scripts/verify-prod-liff.mjs",
     "deploy:dev": "cross-env BUILD_TARGET_ENV=preview opennextjs-cloudflare build && opennextjs-cloudflare deploy --env=\"\"",
