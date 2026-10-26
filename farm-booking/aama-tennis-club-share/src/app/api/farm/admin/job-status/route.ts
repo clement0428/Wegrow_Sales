@@ -2,7 +2,14 @@ import { requireAdmin } from "@/lib/auth/current-member";
 import { getDb } from "@/lib/db/client";
 
 // 告警門檻可調整——這裡先給合理預設值，之後要做成設定畫面再抽出來。
-const HEARTBEAT_MISSED_MINUTES = 5; // 排程間隔預期更短，超過這個沒有任何一次啟動就算漏跳
+// 2026-10-26 ZD-003修正：真正負責觸發的是獨立repo farm-booking-cron
+// (Cloudflare Cron Trigger，見該repo的wrangler.jsonc：triggers.crons =
+// "*/15 * * * *")，排程間隔是15分鐘，不是這裡原本假設的「更短」。門檻訂
+// 5分鐘的結果是：就算cron完全正常運作，兩次tick之間一定會有一段時間顯示
+// 「超過5分鐘沒有任何一次啟動」的假警報，管理頁因此把正常運作的排程誤判
+// 成「排程可能沒有正確觸發」。改成15分鐘週期+5分鐘緩衝，正常週期內不報警，
+// 真的漏跳一次(超過20分鐘沒有任何啟動)才報警。
+const HEARTBEAT_MISSED_MINUTES = 20; // 對應farm-booking-cron的15分鐘排程週期+5分鐘緩衝，不是任意值
 const BACKLOG_TOO_OLD_SECONDS = 600; // 最舊待處理事件等待超過10分鐘
 
 type JobName = "reminders" | "sales-sync";
