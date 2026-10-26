@@ -1,0 +1,75 @@
+name: farm-booking deploy (production)
+
+# OpenNext's own build tooling self-reports "not fully compatible with Windows"
+# — confirmed in practice on 2026-10-26: `npm run deploy` crashes at the exact
+# same point (exit 127) on native Windows whether run via Git Bash or
+# PowerShell, with no other diagnostic output. This workflow runs the same
+# `npm run deploy` sequence on a Linux runner instead of asking for a second
+# machine — matches how this project's own test CI (farm-booking-test.yml)
+# already runs on ubuntu-latest without issue.
+#
+# Manual trigger only (workflow_dispatch), not on every push — this deploys
+# straight to the real production Worker/D1/domain (booking.wegrow-orbit.com),
+# there is no staging gate in front of it. A human (or an explicitly-asked-for
+# Claude Code turn) decides when to run it.
+#
+# Requires one repo secret: CLOUDFLARE_API_TOKEN (a Cloudflare API Token,
+# NOT the interactive `wrangler login` OAuth session — those are two
+# different credential types; the OAuth session is scoped to one logged-in
+# device/browser and not meant to be exported into CI). Needs at minimum
+# Workers Scripts:Edit + D1:Edit + Account Settings:Read for this account.
+# Everything else this deploy needs (SESSION_SECRET, LINE_CHANNEL_ID, etc.)
+# is already stored as Cloudflare Worker secrets via `wrangler secret put
+# --env production` — this workflow does not set or touch those.
+
+on:
+  workflow_dispatch: {}
+
+defaults:
+  run:
+    working-directory: farm-booking/aama-tennis-club-share
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: production
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: farm-booking/aama-tennis-club-share/package-lock.json
+
+      - run: npm ci
+
+      - name: Run test suite before deploying (same gate as farm-booking-test.yml)
+        run: npx vitest run
+
+      - run: npx tsc --noEmit
+
+      - name: Build + deploy (same command as local `npm run deploy`)
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: npm run deploy
+
+      - name: Post-deploy health check (real HTTP calls against the actual production domain)
+        run: |
+          set -e
+          echo "=== booking.wegrow-orbit.com root ==="
+          curl -sf -o /dev/null -w "HTTP %{http_code}\n" https://booking.wegrow-orbit.com/
+
+          echo "=== staff API requires auth (expect 401/302, not 500) ==="
+          CODE=$(curl -s -o /dev/null -w "%{http_code}" https://booking.wegrow-orbit.com/api/farm/admin/staff)
+          echo "staff API unauthenticated status: $CODE"
+          if [ "$CODE" = "500" ]; then
+            echo "::error::staff API returned 500 — likely a broken deploy, not an auth rejection"
+            exit 1
+          fi
+
+          echo "=== webhook signature endpoint alive (expect 401 for bad signature, not 500) ==="
+          WEBHOOK_CODE=$(curl -s -o /dev/null -w "%{http_code}" -X POST https://booking.wegrow-orbit.com/api/line/webhook -H "Content-Type: application/json" -d '{}')
+          echo "webhook endpoint status: $WEBHOOK_CODE"
