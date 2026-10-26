@@ -49,6 +49,15 @@ jobs:
       - name: Run test suite before deploying (same gate as farm-booking-test.yml)
         run: npx vitest run
 
+      - name: Generate Next.js route types before typechecking
+        run: npx next typegen
+        # Fresh checkout has no .next/types/ yet — route handlers using the
+        # typed-routes RouteContext<...> helper (eg. calendar.ics/route.ts)
+        # fail tsc with "Cannot find name 'RouteContext'" without this.
+        # farm-booking-test.yml never ran tsc at all, so this gap was never
+        # caught until this deploy workflow's own tsc step hit it for real
+        # (2026-10-26) — not something a green test-only run could prove.
+
       - run: npx tsc --noEmit
 
       - name: Build + deploy (same command as local `npm run deploy`)

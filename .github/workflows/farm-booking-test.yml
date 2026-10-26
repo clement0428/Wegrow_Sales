@@ -38,6 +38,15 @@ jobs:
           cache-dependency-path: farm-booking/aama-tennis-club-share/package-lock.json
       - run: npm ci
       - run: npx vitest run
+      - name: Generate Next.js route types before typechecking
+        run: npx next typegen
+        # Fresh checkout has no .next/types/ yet — route handlers using the
+        # typed-routes RouteContext<...> helper fail tsc with "Cannot find
+        # name 'RouteContext'" without this. This test workflow never ran
+        # tsc at all before 2026-10-26, so a real type error here could ship
+        # straight through to the deploy workflow's own tsc gate undetected
+        # until deploy time — catch it earlier, on every push instead.
+      - run: npx tsc --noEmit
       - name: verify OAuth checker negative tests specifically
         run: npx vitest run tests/scripts/verify-line-oauth.test.ts
       - name: confirm sync-build-env.mjs refuses a deliberately reintroduced P0 vulnerability
