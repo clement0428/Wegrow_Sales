@@ -667,6 +667,7 @@ function SettingsView() {
   return <div className="settings-columns">
     <div className="admin-section"><h2>容量政策</h2><p>此規則已依使用者確認固定；變更時建立新版本，不回寫舊訂單。</p><div className="policy-list"><label>每時段總人數上限<input value="30" readOnly /></label><label>每時段最多團數<input value="2" readOnly /></label></div><div className="verified-line"><CheckCircle2 />規則版本 V2：每時段 30 人／最多 2 團，不分團數分級</div></div>
     <UnclaimedEscalationPanel />
+    <StaffRolePanel />
     <div className="admin-section"><h2>待正式核定</h2><ul className="checklist"><li>成人、兒童與幼兒票價及年齡</li><li>付款保留時間（開發預設 10 分鐘）</li><li>前一天提醒時間（開發預設 18:00，提醒會排入佇列但 LINE Messaging API 憑證未設定，不會真的送出）</li><li>地址、導航、雨天、取消與退款政策</li><li>LINE／金流／Google Calendar 憑證</li><li>Sales 同步（outbox＋job已完整實作，Sales端接收API未部署）</li></ul></div>
     <JobStatusPanel />
   </div>;
@@ -747,6 +748,116 @@ function UnclaimedEscalationPanel() {
           {savedAt && `（已儲存 ${savedAt.toLocaleTimeString("zh-TW")}）`}
         </div>
       </div>
+    )}
+  </div>;
+}
+
+type StaffMember = { id: string; displayName: string; role: string };
+type RoleAuditEntry = {
+  id: string; member_id: string; member_name: string | null;
+  actor_id: string | null; actor_name: string | null;
+  from_state: string | null; to_state: string | null; reason: string | null; created_at: string;
+};
+
+const ASSIGNABLE_ROLE_LABELS: Record<string, string> = { admin: "管理員", reception: "接待員", kitchen: "餐飲／備料", member: "一般使用者（無員工權限）" };
+
+// 2026-10-26補強：之前整個repo沒有任何畫面能指派角色，Clement自己的admin
+// 升級是直接對production D1下UPDATE，完全沒有紀錄。這裡用後台畫面操作，
+// 不要求Clement自己呼叫POST——選人、選角色、按儲存，稽核紀錄自動寫入。
+function StaffRolePanel() {
+  const [members, setMembers] = useState<StaffMember[]>([]);
+  const [audit, setAudit] = useState<RoleAuditEntry[]>([]);
+  const [state, setState] = useState<"loading" | "ready" | "error">("loading");
+  const [pendingRole, setPendingRole] = useState<Record<string, string>>({});
+  const [savingId, setSavingId] = useState<string | null>(null);
+  const [saveError, setSaveError] = useState<string | null>(null);
+  const [showAudit, setShowAudit] = useState(false);
+  const [reloadTick, setReloadTick] = useState(0);
+  const reload = useCallback(() => { setState("loading"); setReloadTick((n) => n + 1); }, []);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    Promise.all([
+      fetch("/api/farm/admin/staff?all=1", { signal: controller.signal }).then((res) => { if (!res.ok) throw new Error(String(res.status)); return res.json() as Promise<{ staff: StaffMember[] }>; }),
+      fetch("/api/farm/admin/staff/audit", { signal: controller.signal }).then((res) => { if (!res.ok) throw new Error(String(res.status)); return res.json() as Promise<{ changes: RoleAuditEntry[] }>; }),
+    ])
+      .then(([staffRes, auditRes]) => { setMembers(staffRes.staff); setAudit(auditRes.changes); setState("ready"); })
+      .catch((error: unknown) => {
+        if (error instanceof DOMException && error.name === "AbortError") return;
+        setState("error");
+      });
+    return () => controller.abort();
+  }, [reloadTick]);
+
+  async function saveRole(memberId: string) {
+    const role = pendingRole[memberId];
+    if (!role) return;
+    setSavingId(memberId); setSaveError(null);
+    try {
+      const res = await fetch("/api/farm/admin/staff", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ memberId, role }),
+      });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({})) as { error?: string };
+        setSaveError(body.error ?? `儲存失敗（${res.status}）——非管理員會被拒絕，角色變更與稽核紀錄是同一次請求，沒有半成功的狀態`);
+        return;
+      }
+      reload();
+    } finally {
+      setSavingId(null);
+    }
+  }
+
+  return <div className="admin-section">
+    <h2><Users size={16} style={{ verticalAlign: "-2px", marginRight: 4 }} />成員與角色管理</h2>
+    <p>只有管理員能在這裡改角色；每次變更都會寫進下方「變更紀錄」，不是改了就沒人知道。一次只處理一個人，不批次調整。</p>
+    {state === "loading" && <div className="empty-admin"><RefreshCw className="spin" size={14} /> 載入中…</div>}
+    {state === "error" && <div className="action-error-inline">成員清單讀取失敗</div>}
+    {state === "ready" && (
+      <>
+        <table className="staff-role-table">
+          <thead><tr><th>成員</th><th>目前角色</th><th>變更為</th><th></th></tr></thead>
+          <tbody>
+            {members.map((m) => (
+              <tr key={m.id}>
+                <td>{m.displayName}</td>
+                <td>{ASSIGNABLE_ROLE_LABELS[m.role] ?? m.role}</td>
+                <td>
+                  <select value={pendingRole[m.id] ?? m.role} onChange={(e) => setPendingRole((p) => ({ ...p, [m.id]: e.target.value }))}>
+                    {Object.entries(ASSIGNABLE_ROLE_LABELS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+                  </select>
+                </td>
+                <td>
+                  <button
+                    className="secondary-button"
+                    disabled={savingId === m.id || (pendingRole[m.id] ?? m.role) === m.role}
+                    onClick={() => void saveRole(m.id)}
+                  >
+                    {savingId === m.id ? "儲存中…" : "儲存"}
+                  </button>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+        {saveError && <div className="action-error-inline">{saveError}</div>}
+        <button className="secondary-button" style={{ marginTop: 10 }} onClick={() => setShowAudit((v) => !v)}>
+          {showAudit ? "隱藏變更紀錄" : `查看變更紀錄（${audit.length}）`}
+        </button>
+        {showAudit && (
+          audit.length === 0
+            ? <div className="empty-admin">目前沒有任何透過這個畫面做的角色變更紀錄。</div>
+            : <ul className="checklist">
+                {audit.map((a) => (
+                  <li key={a.id}>
+                    {a.created_at.slice(0, 16).replace("T", " ")}｜{a.actor_name ?? "（操作者未知）"} 把 {a.member_name ?? a.member_id} 的角色從「{ASSIGNABLE_ROLE_LABELS[a.from_state ?? ""] ?? a.from_state}」改成「{ASSIGNABLE_ROLE_LABELS[a.to_state ?? ""] ?? a.to_state}」
+                    {a.reason && `（${a.reason}）`}
+                  </li>
+                ))}
+              </ul>
+        )}
+      </>
     )}
   </div>;
 }

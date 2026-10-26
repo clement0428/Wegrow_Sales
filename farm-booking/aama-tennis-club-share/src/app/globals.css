@@ -418,6 +418,9 @@ button:disabled { cursor: not-allowed; opacity: .45; }
 .policy-list input { width: 80px; padding: 10px; border: 1px solid var(--line); text-align: center; }
 .verified-line { display: flex; align-items: center; gap: 8px; padding: 12px; background: #eef5f0; color: var(--green); font-weight: 700; }
 .checklist { margin: 20px 0 0; padding-left: 22px; color: var(--muted); line-height: 2; }
+.staff-role-table { width: 100%; border-collapse: collapse; margin: 16px 0; }
+.staff-role-table th, .staff-role-table td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--line); font-size: 14px; }
+.staff-role-table select { padding: 6px 8px; border: 1px solid var(--line); border-radius: 4px; }
 
 .admin-whoami { font-size: 13px; color: var(--muted); }
 .data-connection-row { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin-bottom: 16px; font-size: 12px; }
