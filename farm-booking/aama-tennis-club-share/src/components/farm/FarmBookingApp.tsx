@@ -310,6 +310,56 @@ export default function FarmBookingApp({ initialView = "booking" }: { initialVie
     persistEligibility({ status: "none" });
   }
 
+  // 2026-10-26 QA-005/FIX-07：免費資格驗證入口原本只在STEP 3(填完聯絡資料
+  // 之後)才出現，前兩步只看得到一般門票計價，客戶可能誤以為一定要付費。
+  // startEligibilityClaim()需要slotId才能呼叫(資格驗證綁定特定時段)，所以
+  // 技術上最早能用的時機是STEP 2選完時段那一刻，不是STEP 1——抽成共用區塊，
+  // STEP 2選到時段後立刻顯示，STEP 3保留原本位置供還沒處理的人繼續完成，
+  // 不是互斥的兩個入口，只是提前讓客戶越早知道越好。
+  function renderEligibilityBlock() {
+    return (
+      <div className="eligibility-block">
+        {eligibility.status === "none" && (
+          <>
+            <p className="section-help compact">若您是威果企業認養客戶，可登入 WeGrow Orbit 驗證免費參訪資格（不影響一般付費預約，不驗證就維持上方門票計價）。</p>
+            <button type="button" className="secondary-button" onClick={startEligibilityClaim}><ShieldCheck /> 登入驗證免費參訪資格</button>
+          </>
+        )}
+        {eligibility.status === "pending" && <div className="loading-state"><LoaderCircle /> 正在前往 WeGrow Orbit 登入…</div>}
+        {eligibility.status === "confirmed" && <div className="blocked-result success-result"><Check /><div><strong>已確認免費參訪資格</strong><p>這次參訪將不收取門票費用。</p></div></div>}
+        {eligibility.status === "unavailable" && (
+          <div className="blocked-result"><ShieldCheck /><div>
+            <strong>免費資格驗證暫時無法使用</strong>
+            <p>服務本身連線異常，不代表您的資格未通過——這筆預約暫時無法送出，可稍後重新驗證，或改用一般付費預約，也可聯繫威果官方 LINE 協助確認。</p>
+            <div className="eligibility-actions">
+              <button type="button" className="secondary-button" onClick={startEligibilityClaim}><ShieldCheck /> 重新驗證</button>
+              <button type="button" className="secondary-button" onClick={switchToPaidBooking}>改為一般付費預約</button>
+            </div>
+          </div></div>
+        )}
+        {eligibility.status === "stale" && (
+          <div className="blocked-result"><ShieldCheck /><div>
+            <strong>免費參訪資格驗證已過期或已使用</strong>
+            <p>這筆預約暫時無法送出，請重新登入認養企業帳號再驗證一次，或改用一般付費預約。</p>
+            <div className="eligibility-actions">
+              <button type="button" className="secondary-button" onClick={startEligibilityClaim}><ShieldCheck /> 重新驗證</button>
+              <button type="button" className="secondary-button" onClick={switchToPaidBooking}>改為一般付費預約</button>
+            </div>
+          </div></div>
+        )}
+        {eligibility.status === "not_eligible" && (
+          <div className="blocked-result"><ShieldCheck /><div>
+            <strong>核對後此帳號不符合免費參訪資格</strong>
+            <p>可改用一般付費預約，或聯繫威果官方 LINE 確認合約範圍。</p>
+            <div className="eligibility-actions">
+              <button type="button" className="secondary-button" onClick={switchToPaidBooking}>改為一般付費預約</button>
+            </div>
+          </div></div>
+        )}
+      </div>
+    );
+  }
+
   useEffect(() => {
     const controller = new AbortController();
     fetch(`/api/farm/availability?people=${people}`, { signal: controller.signal })
@@ -492,6 +542,7 @@ export default function FarmBookingApp({ initialView = "booking" }: { initialVie
                       <div className="pricing-total"><span>本次合計</span><strong>NT$ {price.totalTwd.toLocaleString()}</strong></div>
                       {price.creditRemainingTwd > 0 && <small>尚有 NT$ {price.creditRemainingTwd.toLocaleString()} 可於參訪當日折抵現場商品。</small>}
                     </div>
+                    <p className="section-help compact eligibility-hint">若您是威果企業認養客戶：以上是尚未驗證身分前的一般預約參考價，下一步選好時段後即可登入驗證免費參訪資格。</p>
                   </>
                 )}
                 <h3 className="field-title">來訪人數</h3>
@@ -542,6 +593,12 @@ export default function FarmBookingApp({ initialView = "booking" }: { initialVie
                     </div>
                   </>
                 )}
+                {slotId && (
+                  <>
+                    <h3 className="field-title">企業認養客戶免費參訪</h3>
+                    {renderEligibilityBlock()}
+                  </>
+                )}
                 {availabilityMessage && <p className="data-source">資料狀態：{availabilityMessage}</p>}
                 <button className="primary-button" disabled={!slotId} onClick={() => setStep(3)}>填寫聯絡資料 <ArrowRight /></button>
               </>
@@ -558,45 +615,7 @@ export default function FarmBookingApp({ initialView = "booking" }: { initialVie
                   <label className="full">備註<textarea value={note} onChange={(event) => setNote(event.target.value)} placeholder="行動協助、孩童或其他需要農場先知道的事" /></label>
                 </div>
                 <h3 className="field-title">企業認養客戶免費參訪</h3>
-                <div className="eligibility-block">
-                  {eligibility.status === "none" && (
-                    <>
-                      <p className="section-help compact">若您是威果企業認養客戶，可登入 WeGrow Orbit 驗證免費參訪資格（不影響一般付費預約，不驗證就維持上方門票計價）。</p>
-                      <button type="button" className="secondary-button" onClick={startEligibilityClaim}><ShieldCheck /> 登入驗證免費參訪資格</button>
-                    </>
-                  )}
-                  {eligibility.status === "pending" && <div className="loading-state"><LoaderCircle /> 正在前往 WeGrow Orbit 登入…</div>}
-                  {eligibility.status === "confirmed" && <div className="blocked-result success-result"><Check /><div><strong>已確認免費參訪資格</strong><p>這次參訪將不收取門票費用。</p></div></div>}
-                  {eligibility.status === "unavailable" && (
-                    <div className="blocked-result"><ShieldCheck /><div>
-                      <strong>免費資格驗證暫時無法使用</strong>
-                      <p>服務本身連線異常，不代表您的資格未通過——這筆預約暫時無法送出，可稍後重新驗證，或改用一般付費預約，也可聯繫威果官方 LINE 協助確認。</p>
-                      <div className="eligibility-actions">
-                        <button type="button" className="secondary-button" onClick={startEligibilityClaim}><ShieldCheck /> 重新驗證</button>
-                        <button type="button" className="secondary-button" onClick={switchToPaidBooking}>改為一般付費預約</button>
-                      </div>
-                    </div></div>
-                  )}
-                  {eligibility.status === "stale" && (
-                    <div className="blocked-result"><ShieldCheck /><div>
-                      <strong>免費參訪資格驗證已過期或已使用</strong>
-                      <p>這筆預約暫時無法送出，請重新登入認養企業帳號再驗證一次，或改用一般付費預約。</p>
-                      <div className="eligibility-actions">
-                        <button type="button" className="secondary-button" onClick={startEligibilityClaim}><ShieldCheck /> 重新驗證</button>
-                        <button type="button" className="secondary-button" onClick={switchToPaidBooking}>改為一般付費預約</button>
-                      </div>
-                    </div></div>
-                  )}
-                  {eligibility.status === "not_eligible" && (
-                    <div className="blocked-result"><ShieldCheck /><div>
-                      <strong>核對後此帳號不符合免費參訪資格</strong>
-                      <p>可改用一般付費預約，或聯繫威果官方 LINE 確認合約範圍。</p>
-                      <div className="eligibility-actions">
-                        <button type="button" className="secondary-button" onClick={switchToPaidBooking}>改為一般付費預約</button>
-                      </div>
-                    </div></div>
-                  )}
-                </div>
+                {renderEligibilityBlock()}
                 {!isFreeConfirmed && (
                   <>
                     <h3 className="field-title">付款方式（尚未開放）</h3>
