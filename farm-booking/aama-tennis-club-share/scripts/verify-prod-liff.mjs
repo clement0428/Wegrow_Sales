@@ -234,7 +234,15 @@ async function checkPageWithRealBrowser(browser, path, { expectRedirectToLineLog
 async function main() {
   await checkBuildIdMatches();
 
-  const browser = await puppeteer.launch();
+  // 2026-10-26: CI runners (and some local sandboxed environments) can't use
+  // Chrome's own setuid sandbox — "No usable sandbox!" crashes the browser
+  // process before any page loads. --no-sandbox is the standard, documented
+  // puppeteer-in-CI workaround (this process itself runs in an already-
+  // isolated container/VM, so the extra layer Chrome would add here is not
+  // load-bearing the way it would be on a developer's own machine).
+  const browser = await puppeteer.launch({
+    args: ["--no-sandbox", "--disable-setuid-sandbox", "--disable-gpu", "--disable-dev-shm-usage"],
+  });
   await checkPageWithRealBrowser(browser, "/login", { expectRedirectToLineLogin: true });
   await checkPageWithRealBrowser(browser, "/", { expectRedirectToLineLogin: false });
   await browser.close();
