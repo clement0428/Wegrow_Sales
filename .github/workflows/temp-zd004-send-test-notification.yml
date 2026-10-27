@@ -38,13 +38,13 @@ jobs:
         env:
           LINE_MESSAGING_ACCESS_TOKEN: ${{ secrets.LINE_MESSAGING_ACCESS_TOKEN }}
         run: |
-          UID=$(cat uid.txt)
+          PUSH_TO=$(cat uid.txt)
           rm -f uid.txt
           curl -s -X POST "https://api.line.me/v2/bot/message/push" \
             -H "Content-Type: application/json" \
             -H "Authorization: Bearer ${LINE_MESSAGING_ACCESS_TOKEN}" \
             -H "X-Line-Retry-Key: zd004-accept-test-20261027" \
-            --data-raw "{\"to\":\"${UID}\",\"messages\":[{\"type\":\"text\",\"text\":\"[系統測試 ZD-004] 這是WeGrow農場預約系統的驗收測試通知，確認LINE Messaging API已恢復正常。此訊息只會發送給Clement本人，請忽略即可。\"}]}" \
+            --data-raw "{\"to\":\"${PUSH_TO}\",\"messages\":[{\"type\":\"text\",\"text\":\"[系統測試 ZD-004] 這是WeGrow農場預約系統的驗收測試通知，確認LINE Messaging API已恢復正常。此訊息只會發送給Clement本人，請忽略即可。\"}]}" \
             -w "\nhttp_status:%{http_code}\n" -o response.json
           echo "--- LINE API response body ---"
           cat response.json
