@@ -21,7 +21,7 @@ export async function GET() {
     accessToken,
     member.line_user_id,
     [{ type: "text", text: "[系統測試 ZD-004] 這是WeGrow農場預約系統的驗收測試通知，確認LINE Messaging API已恢復正常。此訊息只會發送給Clement本人，請忽略即可。" }],
-    "zd004-accept-test-20261027-v2",
+    crypto.randomUUID(),
   );
   return Response.json(result);
 }
