@@ -80,7 +80,13 @@ export default function FarmAdmin({ adminDisplayName, role }: { adminDisplayName
       <section className="admin-main">
         <header className="admin-topbar no-print"><div><span className="section-kicker">WEGROW FARM OPERATIONS</span><h1>{tabTitle}</h1></div><span className="admin-whoami">{ROLE_LABELS[role]}：{adminDisplayName}</span></header>
 
-        <div className="environment-warning no-print"><AlertTriangle /><span><strong>部分功能未正式開通</strong> LINE Messaging API、LINE Pay、信用卡與 Google Calendar 尚未設定正式憑證；目前不接受真實付款，提醒僅會排入佇列但不會真的送出。</span></div>
+        {/* 2026-10-28修正（Codex獨立重測D-20261028-01發現）：這裡原本連LINE Messaging API
+            一起寫「尚未設定正式憑證」，跟下方「排程與同步狀態」卡片用credentialState
+            判斷出的真實憑證狀態互相矛盾——LINE Messaging已經設定，只是還沒有非空的
+            成功投遞紀錄可驗證（unverified），不是沒設定（not_configured）。這條橫幅
+            只保留目前確實仍未開通的LINE Pay／信用卡／Google Calendar，LINE Messaging
+            的真實狀態一律看下方卡片，不在這裡重複寫一句可能過期的靜態結論。 */}
+        <div className="environment-warning no-print"><AlertTriangle /><span><strong>部分功能未正式開通</strong> LINE Pay、信用卡與 Google Calendar 尚未設定正式憑證；目前不接受真實付款。LINE 提醒的實際憑證與投遞狀態請見下方「排程與同步狀態」。</span></div>
 
         {tab === "calendar" && canSeeCalendarOrOrders && <CalendarView />}
         {tab === "orders" && canSeeCalendarOrOrders && <OrdersView role={role} />}
