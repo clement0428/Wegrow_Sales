@@ -1,6 +1,6 @@
 import { requireAdmin } from "@/lib/auth/current-member";
 import { getDb } from "@/lib/db/client";
-import { isHealthyRun } from "@/lib/outbox/health";
+import { isHealthyRun, deriveCredentialState } from "@/lib/outbox/health";
 
 // 告警門檻可調整——這裡先給合理預設值，之後要做成設定畫面再抽出來。
 // 2026-10-26 ZD-003修正：真正負責觸發的是獨立repo farm-booking-cron
@@ -40,7 +40,14 @@ async function statusFor(db: D1Database, jobName: JobName, outboxTable: "farm_no
   const lastRun = recentRuns[0] ?? null;
   const lastHealthyRun = recentRuns.find(isHealthyRun) ?? null;
 
-  const deadLetter = await db.prepare(`SELECT COUNT(*) AS n FROM ${outboxTable} WHERE status = 'failed'`).first<{ n: number }>();
+  // 2026-10-28 D-20261028-02：永久排除的測試事件原本只靠last_error文字跟真正
+  // 死信混在同一個status='failed'裡辨認——「全部重試」按鈕(WHERE status=
+  // 'failed')會意外把它們復活。farm_sales_sync_outbox.status有CHECK只允許
+  // queued/sent/failed(見0014_sales_sync_outbox.sql)，不能新增狀態值，改用
+  // migration 0023新增的布林欄位permanently_excluded結構化標記，deadLetterCount
+  // 跟excludedCount因此互斥分開算，UI要分開顯示「已排除測試事件」跟「需人工處理」。
+  const deadLetter = await db.prepare(`SELECT COUNT(*) AS n FROM ${outboxTable} WHERE status = 'failed' AND permanently_excluded = 0`).first<{ n: number }>();
+  const excluded = await db.prepare(`SELECT COUNT(*) AS n FROM ${outboxTable} WHERE permanently_excluded = 1`).first<{ n: number }>();
   const oldestQueued = await db.prepare(`SELECT MIN(datetime(next_attempt_at)) AS oldest FROM ${outboxTable} WHERE status = 'queued'`).first<{ oldest: string | null }>();
   const oldestPendingSeconds = oldestQueued?.oldest ? Math.max(0, Math.floor((Date.now() - new Date(oldestQueued.oldest).getTime()) / 1000)) : null;
 
@@ -49,15 +56,19 @@ async function statusFor(db: D1Database, jobName: JobName, outboxTable: "farm_no
   const backlogTooOld = (oldestPendingSeconds ?? 0) > BACKLOG_TOO_OLD_SECONDS;
   const hasCredentialErrors = recentRuns.some((r) => r.error_summary?.includes("credential") || r.error_summary?.includes("401"));
   const deadLetterCount = deadLetter?.n ?? 0;
+  const excludedCount = excluded?.n ?? 0;
+  const credentialState = deriveCredentialState(recentRuns);
 
   return {
     jobName,
+    credentialState,
     lastRunAt: lastRun?.started_at ?? null,
     lastRunTriggerSource: lastRun?.trigger_source ?? null,
     lastRunCompletedAt: lastRun?.completed_at ?? null,
     lastHealthyRunAt: lastHealthyRun?.started_at ?? null,
     oldestPendingSeconds,
     deadLetterCount,
+    excludedCount,
     recentRuns: recentRuns.map((r) => ({
       id: r.id, triggerSource: r.trigger_source, startedAt: r.started_at, completedAt: r.completed_at,
       dueCount: r.due_count, sentCount: r.sent_count, failedCount: r.failed_count, blockedCount: r.blocked_count,

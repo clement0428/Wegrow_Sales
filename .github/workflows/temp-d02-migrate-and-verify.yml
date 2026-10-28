@@ -1,0 +1,65 @@
+name: TEMP d02 migrate and verify
+
+on:
+  workflow_dispatch: {}
+
+defaults:
+  run:
+    working-directory: farm-booking/aama-tennis-club-share
+
+jobs:
+  migrate:
+    runs-on: ubuntu-latest
+    environment: production
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: farm-booking/aama-tennis-club-share/package-lock.json
+      - run: npm ci
+      - name: Apply migration 0023 (adds permanently_excluded column, additive only)
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: |
+          npx wrangler d1 migrations list DB --remote --env production
+          npx wrangler d1 migrations apply DB --remote --env production
+      - name: Show the 4 known permanently-excluded rows before data fix (sanity check)
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: |
+          npx wrangler d1 execute DB --remote --env production --json --command "SELECT id, status, permanently_excluded, last_error FROM farm_sales_sync_outbox WHERE id IN ('aa3fa230-3ff2-4d69-8088-73ea405010f5','e2e-accept-sales-235375481b67c596','71985840-be03-4a72-8dd2-fb888cb27dda','324ca657-b5c5-4893-8491-09afa5be85d9')"
+      - name: Flag the 4 rows as permanently_excluded=1 (structural fix, D-20261028-02)
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: |
+          npx wrangler d1 execute DB --remote --env production --command "UPDATE farm_sales_sync_outbox SET permanently_excluded = 1 WHERE id IN ('aa3fa230-3ff2-4d69-8088-73ea405010f5','e2e-accept-sales-235375481b67c596','71985840-be03-4a72-8dd2-fb888cb27dda','324ca657-b5c5-4893-8491-09afa5be85d9') AND status = 'failed'"
+      - name: Confirm after state (failed count must drop by 4, excluded count must rise by 4)
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: |
+          npx wrangler d1 execute DB --remote --env production --json --command "SELECT status, permanently_excluded, COUNT(*) as n FROM farm_sales_sync_outbox GROUP BY status, permanently_excluded"
+      - name: Also check the single LINE reminder dead letter mentioned by Codex
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: |
+          npx wrangler d1 execute DB --remote --env production --json --command "SELECT id, booking_id, notification_type, last_error, permanently_excluded FROM farm_notification_outbox WHERE status = 'failed'"
+      - name: Isolated-data proof - insert synthetic excluded row and synthetic failed row, run the EXACT retry SQL, confirm only the failed one flips
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: |
+          npx wrangler d1 execute DB --remote --env production --command "INSERT INTO farm_sales_sync_outbox (id, booking_id, event_type, retry_key, attempt_count, status, permanently_excluded, scheduled_at, next_attempt_at, last_error) SELECT 'd02-isolated-excluded-test', booking_id, event_type, 'd02-isolated-excluded-test-retrykey', attempt_count, 'failed', 1, scheduled_at, next_attempt_at, 'd02 isolated test row, safe to delete' FROM farm_sales_sync_outbox LIMIT 1"
+          npx wrangler d1 execute DB --remote --env production --command "INSERT INTO farm_sales_sync_outbox (id, booking_id, event_type, retry_key, attempt_count, status, permanently_excluded, scheduled_at, next_attempt_at, last_error) SELECT 'd02-isolated-failed-test', booking_id, event_type, 'd02-isolated-failed-test-retrykey', attempt_count, 'failed', 0, scheduled_at, next_attempt_at, 'd02 isolated test row, safe to delete' FROM farm_sales_sync_outbox LIMIT 1"
+          echo "--- before retry SQL ---"
+          npx wrangler d1 execute DB --remote --env production --json --command "SELECT id, status, permanently_excluded FROM farm_sales_sync_outbox WHERE id IN ('d02-isolated-excluded-test','d02-isolated-failed-test')"
+          npx wrangler d1 execute DB --remote --env production --command "UPDATE farm_sales_sync_outbox SET status = 'queued', attempt_count = 0, next_attempt_at = datetime('now'), leased_until = NULL, last_error = last_error || ' [manually retried by d02-isolated-test]' WHERE status = 'failed' AND permanently_excluded = 0 AND id IN ('d02-isolated-excluded-test','d02-isolated-failed-test')"
+          echo "--- after retry SQL (excluded must stay failed, failed-not-excluded must become queued) ---"
+          npx wrangler d1 execute DB --remote --env production --json --command "SELECT id, status, permanently_excluded FROM farm_sales_sync_outbox WHERE id IN ('d02-isolated-excluded-test','d02-isolated-failed-test')"
+      - name: Clean up the 2 synthetic isolated test rows
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: |
+          npx wrangler d1 execute DB --remote --env production --command "DELETE FROM farm_sales_sync_outbox WHERE id IN ('d02-isolated-excluded-test','d02-isolated-failed-test')"

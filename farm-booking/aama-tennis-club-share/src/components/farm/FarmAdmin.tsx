@@ -571,10 +571,21 @@ type JobRun = {
   dueCount: number; sentCount: number; failedCount: number; blockedCount: number;
   oldestPendingSeconds: number | null; errorSummary: string | null;
 };
+type CredentialState = "not_configured" | "unverified" | "healthy" | "failing";
 type JobStatus = {
-  jobName: string; lastRunAt: string | null; lastRunTriggerSource: string | null; lastRunCompletedAt: string | null;
-  oldestPendingSeconds: number | null; deadLetterCount: number; recentRuns: JobRun[];
+  jobName: string; credentialState: CredentialState;
+  lastRunAt: string | null; lastRunTriggerSource: string | null; lastRunCompletedAt: string | null; lastHealthyRunAt: string | null;
+  oldestPendingSeconds: number | null; deadLetterCount: number; excludedCount: number; recentRuns: JobRun[];
   alerts: { heartbeatMissed: boolean; backlogTooOld: boolean; hasCredentialErrors: boolean; hasDeadLetters: boolean; thresholds: { heartbeatMissedMinutes: number; backlogTooOldSeconds: number } };
+};
+
+// 2026-10-28 D-20261028-01：四個互斥狀態各自對應的顯示文字跟樣式，不是直接
+// 把文案從「未設定」改寫成「已啟用」——沒有判斷依據的狀態就該顯示「待驗證」。
+const CREDENTIAL_STATE_LABEL: Record<CredentialState, { text: string; cls: string }> = {
+  not_configured: { text: "未設定", cls: "cred-state-missing" },
+  unverified: { text: "已設定，尚無執行紀錄可驗證", cls: "cred-state-unverified" },
+  healthy: { text: "最近一次執行正常", cls: "cred-state-healthy" },
+  failing: { text: "最近一次執行失敗，需人工確認", cls: "cred-state-failing" },
 };
 
 const dateTimeFmt = new Intl.DateTimeFormat("zh-TW", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit", hour12: false, timeZone: "Asia/Taipei" });
@@ -600,9 +611,12 @@ function JobStatusCard({ status, onRetried }: { status: JobStatus; onRetried: ()
         {anyAlert ? <span className="job-alert-pill alert"><AlertTriangle size={12} /> 需注意</span> : <span className="job-alert-pill ok"><CheckCircle2 size={12} /> 正常</span>}
       </div>
       <div className="job-status-grid">
+        <span>憑證狀態</span><span className={CREDENTIAL_STATE_LABEL[status.credentialState].cls}>{CREDENTIAL_STATE_LABEL[status.credentialState].text}</span>
+        <span>最近一次成功</span><span>{status.lastHealthyRunAt ? dateTimeFmt.format(new Date(status.lastHealthyRunAt)) : "尚無成功執行紀錄"}</span>
         <span>最後啟動</span><span>{status.lastRunAt ? `${dateTimeFmt.format(new Date(status.lastRunAt))}（${status.lastRunTriggerSource === "cron" ? "排程" : "手動"}）` : "尚未啟動過"}</span>
         <span>最舊積壓</span><span>{status.oldestPendingSeconds === null ? "無積壓" : `${Math.round(status.oldestPendingSeconds / 60)} 分鐘`}</span>
-        <span>需人工處理</span><span>{status.deadLetterCount} 筆{status.deadLetterCount > 0 && <button className="secondary-button" disabled={retrying} onClick={retryFailed}>{retrying ? "重試中…" : "全部重試"}</button>}</span>
+        <span>需人工處理</span><span>{status.deadLetterCount} 筆{status.deadLetterCount > 0 && <button className="secondary-button" disabled={retrying} onClick={retryFailed}>{retrying ? "重試中…" : "全部重試（不含下方已排除事件）"}</button>}</span>
+        <span>已排除測試事件</span><span>{status.excludedCount} 筆（永久排除，不計入待處理，不會被「全部重試」復活）</span>
       </div>
       {status.alerts.heartbeatMissed && <div className="job-alert-line">⚠ 超過 {status.alerts.thresholds.heartbeatMissedMinutes} 分鐘沒有任何一次啟動紀錄（排程可能沒有正確觸發）</div>}
       {status.alerts.backlogTooOld && <div className="job-alert-line">⚠ 最舊待處理事件已等待超過 {Math.round(status.alerts.thresholds.backlogTooOldSeconds / 60)} 分鐘</div>}
@@ -668,7 +682,7 @@ function SettingsView() {
     <div className="admin-section"><h2>容量政策</h2><p>此規則已依使用者確認固定；變更時建立新版本，不回寫舊訂單。</p><div className="policy-list"><label>每時段總人數上限<input value="30" readOnly /></label><label>每時段最多團數<input value="2" readOnly /></label></div><div className="verified-line"><CheckCircle2 />規則版本 V2：每時段 30 人／最多 2 團，不分團數分級</div></div>
     <UnclaimedEscalationPanel />
     <StaffRolePanel />
-    <div className="admin-section"><h2>待正式核定</h2><ul className="checklist"><li>成人、兒童與幼兒票價及年齡</li><li>付款保留時間（開發預設 10 分鐘）</li><li>前一天提醒時間（開發預設 18:00，提醒會排入佇列但 LINE Messaging API 憑證未設定，不會真的送出）</li><li>地址、導航、雨天、取消與退款政策</li><li>LINE／金流／Google Calendar 憑證</li><li>Sales 同步（outbox＋job已完整實作，Sales端接收API未部署）</li></ul></div>
+    <div className="admin-section"><h2>待正式核定</h2><ul className="checklist"><li>成人、兒童與幼兒票價及年齡</li><li>付款保留時間（開發預設 10 分鐘）</li><li>前一天提醒時間（開發預設 18:00；LINE提醒與Sales同步的實際憑證/執行狀態見下方「排程與同步狀態」卡片，不在這裡重複寫死文案）</li><li>地址、導航、雨天、取消與退款政策</li><li>金流／Google Calendar 憑證</li></ul></div>
     <JobStatusPanel />
   </div>;
 }
